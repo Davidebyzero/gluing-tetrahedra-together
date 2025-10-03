@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <iostream>
 #include <string.h>
 #include <cstdint>
 #include <cinttypes>
@@ -8,6 +9,7 @@
 #include <list>
 #include <functional>
 #include <unordered_set>
+#include <chrono>
 
 //#define DEBUG_PRINT
 
@@ -223,6 +225,8 @@ namespace std
 
 int main(int argc, char *argv[])
 {
+    auto startTime = std::chrono::steady_clock::now();
+
     static const Tetrahedron start =
     {{
         {{-1,-1,-1}},
@@ -238,7 +242,8 @@ int main(int argc, char *argv[])
     polytets->insert(startPolytet);
     for (int tetCount=1;;)
     {
-        printf("%d: %d\n", tetCount, polytets->size());
+        auto currentTime = std::chrono::steady_clock::now();
+        std::cout << tetCount << ": " << polytets->size() << " [" << std::chrono::duration_cast<std::chrono::milliseconds>(currentTime - startTime).count() << " ms]" << std::endl;
         ++tetCount;
         /*if (tetCount > 6)
             break;*/
