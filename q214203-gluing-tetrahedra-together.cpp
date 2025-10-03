@@ -10,7 +10,6 @@
 #include <unordered_set>
 
 //#define DEBUG_PRINT
-//#define DEBUG_PRINT2
 
 typedef __int128 Coord;
 typedef std::array<Coord, 3> Coord3;
@@ -323,13 +322,6 @@ int main(int argc, char *argv[])
                                 if (attachCount > 1)
                                     continue;
                             }
-#ifdef DEBUG_PRINT
-                            printf("[%" PRId64 ", %" PRId64 ", %" PRId64 "], [%" PRId64 ", %" PRId64 ", %" PRId64 "], [%" PRId64 ", %" PRId64 ", %" PRId64 "], [%" PRId64 ", %" PRId64 ", %" PRId64 "]\n",
-                                tetToRotateNormalize->t[0][0], tetToRotateNormalize->t[0][1], tetToRotateNormalize->t[0][2],
-                                tetToRotateNormalize->t[1][0], tetToRotateNormalize->t[1][1], tetToRotateNormalize->t[1][2],
-                                tetToRotateNormalize->t[2][0], tetToRotateNormalize->t[2][1], tetToRotateNormalize->t[2][2],
-                                tetToRotateNormalize->t[3][0], tetToRotateNormalize->t[3][1], tetToRotateNormalize->t[3][2]);
-#endif
                             for (int faceToRotateNormalize=0; faceToRotateNormalize<4; faceToRotateNormalize++)
                             {
                                 Tetrahedron n;
@@ -349,32 +341,10 @@ int main(int argc, char *argv[])
                                     Coord x0 = ( n[1][0]*n[2][1]*n[0][2] - n[1][0]*n[3][1]*n[0][2] - n[0][0]*n[2][1]*n[1][2] + n[0][0]*n[3][1]*n[1][2] - n[1][0]*n[0][1]*n[2][2] + n[0][0]*n[1][1]*n[2][2] + n[0][0]*n[3][1]*n[2][2] - n[1][0]*n[3][1]*n[2][2] + n[3][0]*(n[2][1]*(n[0][2] - n[1][2]) + n[1][1]*(n[0][2] + n[2][2]) - n[0][1]*(n[1][2] + n[2][2])) + n[1][0]*(n[0][1] + n[2][1])*n[3][2] - n[0][0]*(n[1][1] + n[2][1])*n[3][2] + n[2][0]*(n[3][1]*(-n[0][2] + n[1][2]) - n[1][1]*(n[0][2] + n[3][2]) + n[0][1]*(n[1][2] + n[3][2])));
                                     Coord y0 = ( n[1][0]*n[2][1]*n[0][2] + n[1][0]*n[3][1]*n[0][2] - n[0][0]*n[2][1]*n[1][2] - n[0][0]*n[3][1]*n[1][2] - n[3][0]*((n[1][1] + n[2][1])*n[0][2] + (-n[0][1] + n[2][1])*n[1][2]) - n[1][0]*n[0][1]*n[2][2] + n[0][0]*n[1][1]*n[2][2] + n[3][0]*(n[0][1] + n[1][1])*n[2][2] - n[0][0]*n[3][1]*n[2][2] - n[1][0]*n[3][1]*n[2][2] + (-(n[1][0]*n[0][1]) + n[0][0]*n[1][1] + (n[0][0] + n[1][0])*n[2][1])*n[3][2] + n[2][0]*(n[3][1]*(n[0][2] + n[1][2]) + n[0][1]*(n[1][2] - n[3][2]) - n[1][1]*(n[0][2] + n[3][2])));
                                     Coord z0 = (-n[1][0]*n[2][1]*n[0][2] - n[1][0]*n[3][1]*n[0][2] + n[0][0]*n[2][1]*n[1][2] + n[0][0]*n[3][1]*n[1][2] - n[3][0]*n[2][1]*(n[0][2] + n[1][2]) + n[1][0]*n[0][1]*n[2][2] - n[0][0]*n[1][1]*n[2][2] - n[0][0]*n[3][1]*n[2][2] - n[1][0]*n[3][1]*n[2][2] + n[3][0]*n[1][1]*(n[0][2] + n[2][2]) + n[3][0]*n[0][1]*(-n[1][2] + n[2][2]) + n[1][0]*(n[0][1] + n[2][1])*n[3][2] + n[0][0]*(-n[1][1] + n[2][1])*n[3][2] + n[2][0]*(n[3][1]*(n[0][2] + n[1][2]) + n[1][1]*(n[0][2] - n[3][2]) - n[0][1]*(n[1][2] + n[3][2])));
-#ifdef DEBUG_PRINT
-                                    printf(
-                                        "[%" PRId64 ", %" PRId64 ", %" PRId64 "], [%" PRId64 ", %" PRId64 ", %" PRId64 "], [%" PRId64 ", %" PRId64 ", %" PRId64 "], [%" PRId64 ", %" PRId64 ", %" PRId64 "]  "
-                                        "(%" PRId64 ", %" PRId64 ", %" PRId64 ")/%" PRId64 "  "
-                                        "%" PRId64 "/%" PRId64 ", %" PRId64 "/%" PRId64 ", %" PRId64 "/%" PRId64 ", %" PRId64 "/%" PRId64 ", %" PRId64 "/%" PRId64 ", %" PRId64 "/%" PRId64 ", %" PRId64 "/%" PRId64 ", %" PRId64 "/%" PRId64 ", %" PRId64 "/%" PRId64 "\n",
-                                        n[0][0], n[0][1], n[0][2],
-                                        n[1][0], n[1][1], n[1][2],
-                                        n[2][0], n[2][1], n[2][2],
-                                        n[3][0], n[3][1], n[3][2],
-                                        x0, y0, z0, zz_denominator,
-                                        xx_numerator, xx_denominator, xy_numerator, xy_denominator, xz_numerator, xz_denominator,
-                                        yx_numerator, yx_denominator, yy_numerator, yy_denominator, yz_numerator, yz_denominator,
-                                        zx_numerator, zx_denominator, zy_numerator, zy_denominator, zz_numerator, zz_denominator);
-                                    fflush(stdout);
-#endif
                                     // Add this rotation of this polytet
                                     Polytet &newRotatedPolytet = rotationsOfThisPolytet.emplace_back();
                                     for (auto tetToRotate=newPolytet.cbegin(); tetToRotate!=newPolytet.cend(); ++tetToRotate)
                                     {
-#ifdef DEBUG_PRINT
-                                        printf("[%" PRId64 ", %" PRId64 ", %" PRId64 "], [%" PRId64 ", %" PRId64 ", %" PRId64 "], [%" PRId64 ", %" PRId64 ", %" PRId64 "], [%" PRId64 ", %" PRId64 ", %" PRId64 "] ->\n",
-                                            tetToRotate->t[0][0], tetToRotate->t[0][1], tetToRotate->t[0][2],
-                                            tetToRotate->t[1][0], tetToRotate->t[1][1], tetToRotate->t[1][2],
-                                            tetToRotate->t[2][0], tetToRotate->t[2][1], tetToRotate->t[2][2],
-                                            tetToRotate->t[3][0], tetToRotate->t[3][1], tetToRotate->t[3][2]);
-#endif
                                         Tet &nt = newRotatedPolytet.emplace_back();
                                         for (int vertexNum=0; vertexNum<4; vertexNum++)
                                         {
@@ -383,26 +353,13 @@ int main(int argc, char *argv[])
                                             nt.t[vertexNum][2] = z0*power3/zz_denominator + (tetToRotate->t[vertexNum][0]*zx_numerator*2*power3/zx_denominator + tetToRotate->t[vertexNum][1]*zy_numerator*2*power3/zy_denominator + tetToRotate->t[vertexNum][2]*zz_numerator*2*power3/zz_denominator)/power3;
                                         }
                                         memcpy(nt.faceAttached, tetToRotate->faceAttached, sizeof(nt.faceAttached));
-#ifdef DEBUG_PRINT
-                                        printf("[%" PRId64 ", %" PRId64 ", %" PRId64 "], [%" PRId64 ", %" PRId64 ", %" PRId64 "], [%" PRId64 ", %" PRId64 ", %" PRId64 "], [%" PRId64 ", %" PRId64 ", %" PRId64 "] <--\n",
-                                            nt.t[0][0], nt.t[0][1], nt.t[0][2],
-                                            nt.t[1][0], nt.t[1][1], nt.t[1][2],
-                                            nt.t[2][0], nt.t[2][1], nt.t[2][2],
-                                            nt.t[3][0], nt.t[3][1], nt.t[3][2]);
-#endif
                                     }
                                     Coord3 tmpFace = n[2];
                                     n[2] = n[1];
                                     n[1] = n[0];
                                     n[0] = tmpFace;
-#ifdef DEBUG_PRINT
-                                    printf(".\n");
-#endif
                                 }
                             }
-#ifdef DEBUG_PRINT
-                            printf("---\n");
-#endif
                         }
                         // choose the "least" of these rotations, so it can later be compared for equality by others of its kind
                         auto polytetToCompare = rotationsOfThisPolytet.cbegin();
@@ -414,16 +371,13 @@ int main(int argc, char *argv[])
                                  polytetToAdd = &*polytetToCompare;
                         }
                         newPolytets->insert(*polytetToAdd);
-#ifdef DEBUG_PRINT
-                        printf("======\n");
-#endif
                     }
                 discardThisNewPolytet:;
                 }
             }
         }
         
-#ifdef DEBUG_PRINT2
+#ifdef DEBUG_PRINT
         for (auto thisPolytet=newPolytets->cbegin(); thisPolytet!=newPolytets->cend(); ++thisPolytet)
         {
             for (auto thisTet=thisPolytet->cbegin(); thisTet!=thisPolytet->cend(); ++thisTet)
