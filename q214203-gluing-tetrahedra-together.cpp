@@ -11,7 +11,15 @@
 #include <unordered_set>
 #include <chrono>
 
+#define USE_GMP
 //#define DEBUG_PRINT
+
+#ifdef USE_GMP
+#include <gmp.h>
+#   if GMP_NUMB_BITS != 64
+#   error This is hard-coded for 64-bit limbs
+#   endif
+#endif
 
 typedef __int128 Coord;
 typedef std::array<Coord, 3> Coord3;
@@ -227,6 +235,29 @@ namespace std
     };
 };
 
+void mpz_set_int128(mpz_t &dst, const __int128 &src)
+{
+    __int128 abssrc = src < 0 ? -src : src;
+    mpz_import(dst, 2, -1, 4, 0, 0, &abssrc);
+    if (src < 0)
+        mpz_neg(dst, dst);
+}
+void mpz_get_int128(__int128 &dst, const mpz_t &src)
+{
+    dst = 0;
+    size_t count;
+    uint64_t limbs[2];
+
+    mpz_export(limbs, &count, -1, sizeof(uint64_t), 0, 0, src);
+
+    ((int64_t*)&dst)[0] = limbs[0];
+    if (count > 1)
+        ((int64_t*)&dst)[1] = limbs[1];
+
+    if (mpz_sgn(src) < 0)
+        dst = -dst;
+}
+
 int main(int argc, char *argv[])
 {
     auto startTime = std::chrono::steady_clock::now();
@@ -241,7 +272,42 @@ int main(int argc, char *argv[])
     Polytet startPolytet;
     startPolytet.emplace_back(start);
 
-    Coord power3 = 1;
+#ifdef USE_GMP
+    mpz_t power3, power9_2;
+    mpz_init(power3  ); mpz_set_ui(power3  , 1);
+    mpz_init(power9_2); mpz_set_ui(power9_2, 2);
+    mpz_t
+        x , y , z ,
+        x1, y1, z1,
+        x2, y2, z2,
+        x3, y3, z3,
+        xx_numerator_mpz, xx_denominator_mpz,
+        xy_numerator_mpz, xy_denominator_mpz,
+        xz_numerator_mpz, xz_denominator_mpz,
+        yx_numerator_mpz, yx_denominator_mpz,
+        yy_numerator_mpz, yy_denominator_mpz,
+        yz_numerator_mpz, yz_denominator_mpz,
+        zx_numerator_mpz, zx_denominator_mpz,
+        zy_numerator_mpz, zy_denominator_mpz,
+        zz_numerator_mpz, zz_denominator_mpz;
+    mpz_inits(
+        x , y , z ,
+        x1, y1, z1,
+        x2, y2, z2,
+        x3, y3, z3,
+        xx_numerator_mpz, xx_denominator_mpz,
+        xy_numerator_mpz, xy_denominator_mpz,
+        xz_numerator_mpz, xz_denominator_mpz,
+        yx_numerator_mpz, yx_denominator_mpz,
+        yy_numerator_mpz, yy_denominator_mpz,
+        yz_numerator_mpz, yz_denominator_mpz,
+        zx_numerator_mpz, zx_denominator_mpz,
+        zy_numerator_mpz, zy_denominator_mpz,
+        zz_numerator_mpz, zz_denominator_mpz, NULL);
+#else
+    Coord power3   = 1;
+    Coord power9_2 = 2;
+#endif
     auto *polytets = new std::unordered_set<Polytet>;
     polytets->insert(startPolytet);
     size_t prevPolytetCount = 0;
@@ -261,7 +327,13 @@ int main(int argc, char *argv[])
         if (tetCount > 6)
             break;
 #endif
-        power3 *= 3;
+#ifdef USE_GMP
+        mpz_mul_ui(power3  , power3  , 3);
+        mpz_mul_ui(power9_2, power9_2, 9);
+#else
+        power3   *= 3;
+        power9_2 *= 9;
+#endif
         auto *newPolytets = new std::unordered_set<Polytet>;
         for (auto basePolytet=polytets->cbegin(); basePolytet!=polytets->cend(); ++basePolytet)
         {
@@ -368,9 +440,44 @@ int main(int argc, char *argv[])
                                     Tet &nt = newRotatedPolytet.emplace_back();
                                     for (int vertexNum=0; vertexNum<4; vertexNum++)
                                     {
-                                        nt.t[vertexNum][0] = x0*power3/zz_denominator + (tetToRotate->t[vertexNum][0]*xx_numerator*2*power9/xx_denominator + tetToRotate->t[vertexNum][1]*xy_numerator*2*power9/xy_denominator + tetToRotate->t[vertexNum][2]*xz_numerator*2*power9/xz_denominator)/power3;
-                                        nt.t[vertexNum][1] = y0*power3/zz_denominator + (tetToRotate->t[vertexNum][0]*yx_numerator*2*power9/yx_denominator + tetToRotate->t[vertexNum][1]*yy_numerator*2*power9/yy_denominator + tetToRotate->t[vertexNum][2]*yz_numerator*2*power9/yz_denominator)/power3;
-                                        nt.t[vertexNum][2] = z0*power3/zz_denominator + (tetToRotate->t[vertexNum][0]*zx_numerator*2*power9/zx_denominator + tetToRotate->t[vertexNum][1]*zy_numerator*2*power9/zy_denominator + tetToRotate->t[vertexNum][2]*zz_numerator*2*power9/zz_denominator)/power3;
+#ifdef USE_GMP
+                                        mpz_set_int128(x1, tetToRotate->t[vertexNum][0]);
+                                        mpz_set_int128(y1, tetToRotate->t[vertexNum][1]);
+                                        mpz_set_int128(z1, tetToRotate->t[vertexNum][2]);
+
+                                        mpz_set_int128(xx_numerator_mpz, xx_numerator); mpz_set_int128(xx_denominator_mpz, xx_denominator);
+                                        mpz_set_int128(xy_numerator_mpz, xy_numerator); mpz_set_int128(xy_denominator_mpz, xy_denominator);
+                                        mpz_set_int128(xz_numerator_mpz, xz_numerator); mpz_set_int128(xz_denominator_mpz, xz_denominator);
+                                        mpz_set_int128(yx_numerator_mpz, yx_numerator); mpz_set_int128(yx_denominator_mpz, yx_denominator);
+                                        mpz_set_int128(yy_numerator_mpz, yy_numerator); mpz_set_int128(yy_denominator_mpz, yy_denominator);
+                                        mpz_set_int128(yz_numerator_mpz, yz_numerator); mpz_set_int128(yz_denominator_mpz, yz_denominator);
+                                        mpz_set_int128(zx_numerator_mpz, zx_numerator); mpz_set_int128(zx_denominator_mpz, zx_denominator);
+                                        mpz_set_int128(zy_numerator_mpz, zy_numerator); mpz_set_int128(zy_denominator_mpz, zy_denominator);
+                                        mpz_set_int128(zz_numerator_mpz, zz_numerator); mpz_set_int128(zz_denominator_mpz, zz_denominator);
+
+                                        mpz_set_int128(x, x0); mpz_mul(x, x, power3); mpz_div(x, x, zz_denominator_mpz);
+                                        mpz_set_int128(y, y0); mpz_mul(y, y, power3); mpz_div(y, y, zz_denominator_mpz);
+                                        mpz_set_int128(z, z0); mpz_mul(z, z, power3); mpz_div(z, z, zz_denominator_mpz);
+
+                                        mpz_set(x2, x1); mpz_mul(x2, x2, xx_numerator_mpz); mpz_mul(x2, x2, power9_2); mpz_div(x2, x2, xx_denominator_mpz);
+                                        mpz_set(x3, y1); mpz_mul(x3, x3, xy_numerator_mpz); mpz_mul(x3, x3, power9_2); mpz_div(x3, x3, xy_denominator_mpz); mpz_add(x2, x2, x3);
+                                        mpz_set(x3, z1); mpz_mul(x3, x3, xz_numerator_mpz); mpz_mul(x3, x3, power9_2); mpz_div(x3, x3, xz_denominator_mpz); mpz_add(x2, x2, x3); mpz_div(x2, x2, power3); mpz_add(x, x, x2);
+                                        mpz_set(y2, x1); mpz_mul(y2, y2, yx_numerator_mpz); mpz_mul(y2, y2, power9_2); mpz_div(y2, y2, yx_denominator_mpz);
+                                        mpz_set(y3, y1); mpz_mul(y3, y3, yy_numerator_mpz); mpz_mul(y3, y3, power9_2); mpz_div(y3, y3, yy_denominator_mpz); mpz_add(y2, y2, y3);
+                                        mpz_set(y3, z1); mpz_mul(y3, y3, yz_numerator_mpz); mpz_mul(y3, y3, power9_2); mpz_div(y3, y3, yz_denominator_mpz); mpz_add(y2, y2, y3); mpz_div(y2, y2, power3); mpz_add(y, y, y2);
+                                        mpz_set(z2, x1); mpz_mul(z2, z2, zx_numerator_mpz); mpz_mul(z2, z2, power9_2); mpz_div(z2, z2, zx_denominator_mpz);
+                                        mpz_set(z3, y1); mpz_mul(z3, z3, zy_numerator_mpz); mpz_mul(z3, z3, power9_2); mpz_div(z3, z3, zy_denominator_mpz); mpz_add(z2, z2, z3);
+                                        mpz_set(z3, z1); mpz_mul(z3, z3, zz_numerator_mpz); mpz_mul(z3, z3, power9_2); mpz_div(z3, z3, zz_denominator_mpz); mpz_add(z2, z2, z3); mpz_div(z2, z2, power3); mpz_add(z, z, z2);
+
+                                        mpz_get_int128(nt.t[vertexNum][0], x);
+                                        mpz_get_int128(nt.t[vertexNum][1], y);
+                                        mpz_get_int128(nt.t[vertexNum][2], z);
+
+#else
+                                        nt.t[vertexNum][0] = x0*power3/zz_denominator + (tetToRotate->t[vertexNum][0]*xx_numerator*power9_2/xx_denominator + tetToRotate->t[vertexNum][1]*xy_numerator*power9_2/xy_denominator + tetToRotate->t[vertexNum][2]*xz_numerator*power9_2/xz_denominator)/power3;
+                                        nt.t[vertexNum][1] = y0*power3/zz_denominator + (tetToRotate->t[vertexNum][0]*yx_numerator*power9_2/yx_denominator + tetToRotate->t[vertexNum][1]*yy_numerator*power9_2/yy_denominator + tetToRotate->t[vertexNum][2]*yz_numerator*power9_2/yz_denominator)/power3;
+                                        nt.t[vertexNum][2] = z0*power3/zz_denominator + (tetToRotate->t[vertexNum][0]*zx_numerator*power9_2/zx_denominator + tetToRotate->t[vertexNum][1]*zy_numerator*power9_2/zy_denominator + tetToRotate->t[vertexNum][2]*zz_numerator*power9_2/zz_denominator)/power3;
+#endif
                                     }
                                     memcpy(nt.faceAttached, tetToRotate->faceAttached, sizeof(nt.faceAttached));
                                 }
@@ -415,5 +522,21 @@ int main(int argc, char *argv[])
         polytets = newPolytets;
     }
     delete polytets;
+#ifdef USE_GMP
+    mpz_clears(
+        x , y , z ,
+        x1, y1, z1,
+        x2, y2, z2,
+        x3, y3, z3,
+        xx_numerator_mpz, xx_denominator_mpz,
+        xy_numerator_mpz, xy_denominator_mpz,
+        xz_numerator_mpz, xz_denominator_mpz,
+        yx_numerator_mpz, yx_denominator_mpz,
+        yy_numerator_mpz, yy_denominator_mpz,
+        yz_numerator_mpz, yz_denominator_mpz,
+        zx_numerator_mpz, zx_denominator_mpz,
+        zy_numerator_mpz, zy_denominator_mpz,
+        zz_numerator_mpz, zz_denominator_mpz, NULL);
+#endif
 	return 0;
 }
