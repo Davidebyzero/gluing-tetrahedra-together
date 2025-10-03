@@ -89,20 +89,6 @@ public:
     }
 };
 
-/*Coord compare(const Coord3 &a, const Coord3 &b)
-{
-    Coord result = a[0] - b[0]; if (result != 0) return result;
-    {   } result = a[1] - b[1]; if (result != 0) return result;
-    {   } result = a[2] - b[2];                  return result;
-}
-Coord compare(const NormalizedTetrahedron &a, const NormalizedTetrahedron &b)
-{
-    Coord result = compare(a[0], b[0]); if (result != 0) return result;
-    {   } result = compare(a[1], b[1]); if (result != 0) return result;
-    {   } result = compare(a[2], b[2]); if (result != 0) return result;
-    {   } result = compare(a[3], b[3]);                  return result;
-}*/
-
 bool operator<(const Tet &_a, const Tet &_b)
 {
     NormalizedTetrahedron a(_a.t), b(_b.t);
@@ -274,17 +260,6 @@ int main(int argc, char *argv[])
                                     Coord x0 = ( n[1][0]*n[2][1]*n[0][2] - n[1][0]*n[3][1]*n[0][2] - n[0][0]*n[2][1]*n[1][2] + n[0][0]*n[3][1]*n[1][2] - n[1][0]*n[0][1]*n[2][2] + n[0][0]*n[1][1]*n[2][2] + n[0][0]*n[3][1]*n[2][2] - n[1][0]*n[3][1]*n[2][2] + n[3][0]*(n[2][1]*(n[0][2] - n[1][2]) + n[1][1]*(n[0][2] + n[2][2]) - n[0][1]*(n[1][2] + n[2][2])) + n[1][0]*(n[0][1] + n[2][1])*n[3][2] - n[0][0]*(n[1][1] + n[2][1])*n[3][2] + n[2][0]*(n[3][1]*(-n[0][2] + n[1][2]) - n[1][1]*(n[0][2] + n[3][2]) + n[0][1]*(n[1][2] + n[3][2])));
                                     Coord y0 = ( n[1][0]*n[2][1]*n[0][2] + n[1][0]*n[3][1]*n[0][2] - n[0][0]*n[2][1]*n[1][2] - n[0][0]*n[3][1]*n[1][2] - n[3][0]*((n[1][1] + n[2][1])*n[0][2] + (-n[0][1] + n[2][1])*n[1][2]) - n[1][0]*n[0][1]*n[2][2] + n[0][0]*n[1][1]*n[2][2] + n[3][0]*(n[0][1] + n[1][1])*n[2][2] - n[0][0]*n[3][1]*n[2][2] - n[1][0]*n[3][1]*n[2][2] + (-(n[1][0]*n[0][1]) + n[0][0]*n[1][1] + (n[0][0] + n[1][0])*n[2][1])*n[3][2] + n[2][0]*(n[3][1]*(n[0][2] + n[1][2]) + n[0][1]*(n[1][2] - n[3][2]) - n[1][1]*(n[0][2] + n[3][2])));
                                     Coord z0 = (-n[1][0]*n[2][1]*n[0][2] - n[1][0]*n[3][1]*n[0][2] + n[0][0]*n[2][1]*n[1][2] + n[0][0]*n[3][1]*n[1][2] - n[3][0]*n[2][1]*(n[0][2] + n[1][2]) + n[1][0]*n[0][1]*n[2][2] - n[0][0]*n[1][1]*n[2][2] - n[0][0]*n[3][1]*n[2][2] - n[1][0]*n[3][1]*n[2][2] + n[3][0]*n[1][1]*(n[0][2] + n[2][2]) + n[3][0]*n[0][1]*(-n[1][2] + n[2][2]) + n[1][0]*(n[0][1] + n[2][1])*n[3][2] + n[0][0]*(-n[1][1] + n[2][1])*n[3][2] + n[2][0]*(n[3][1]*(n[0][2] + n[1][2]) + n[1][1]*(n[0][2] - n[3][2]) - n[0][1]*(n[1][2] + n[3][2])));
-                                    /*
-                                    Coord xx_numerator =  f[2][1]*(f[1][2] - f[0][2]) - f[1][1]*(f[0][2] + f[2][2]) + f[0][1]*(f[1][2] + f[2][2]); Coord xx_denominator = f[0][2]*(f[1][0]*f[2][1] - f[2][0]*f[1][1]) + f[1][2]*(f[2][0]*f[0][1] - f[0][0]*f[2][1]) + f[2][2]*(f[0][0]*f[1][1] - f[1][0]*f[0][1]);
-                                    Coord xy_numerator =  f[2][0]*(f[0][2] - f[1][2]) + f[1][0]*(f[0][2] + f[2][2]) - f[0][0]*(f[1][2] + f[2][2]); Coord xy_denominator = f[0][2]*(f[1][0]*f[2][1] - f[2][0]*f[1][1]) + f[1][2]*(f[2][0]*f[0][1] - f[0][0]*f[2][1]) + f[2][2]*(f[0][0]*f[1][1] - f[1][0]*f[0][1]);
-                                    Coord xz_numerator =  f[2][0]*(f[1][1] - f[0][1]) - f[1][0]*(f[0][1] + f[2][1]) + f[0][0]*(f[1][1] + f[2][1]); Coord xz_denominator = f[0][2]*(f[1][0]*f[2][1] - f[2][0]*f[1][1]) + f[1][2]*(f[2][0]*f[0][1] - f[0][0]*f[2][1]) + f[2][2]*(f[0][0]*f[1][1] - f[1][0]*f[0][1]);
-                                    Coord yx_numerator =  f[2][1]*(f[0][2] + f[1][2]) + f[1][1]*(f[0][2] - f[2][2]) - f[0][1]*(f[1][2] + f[2][2]); Coord yx_denominator = f[0][2]*(f[1][0]*f[2][1] - f[2][0]*f[1][1]) + f[1][2]*(f[2][0]*f[0][1] - f[0][0]*f[2][1]) + f[2][2]*(f[0][0]*f[1][1] - f[1][0]*f[0][1]);
-                                    Coord yy_numerator = -f[2][0]*(f[0][2] + f[1][2]) + f[1][0]*(f[2][2] - f[0][2]) + f[0][0]*(f[1][2] + f[2][2]); Coord yy_denominator = f[0][2]*(f[1][0]*f[2][1] - f[2][0]*f[1][1]) + f[1][2]*(f[2][0]*f[0][1] - f[0][0]*f[2][1]) + f[2][2]*(f[0][0]*f[1][1] - f[1][0]*f[0][1]);
-                                    Coord yz_numerator =  f[2][0]*(f[0][1] + f[1][1]) + f[1][0]*(f[0][1] - f[2][1]) - f[0][0]*(f[1][1] + f[2][1]); Coord yz_denominator = f[0][2]*(f[1][0]*f[2][1] - f[2][0]*f[1][1]) + f[1][2]*(f[2][0]*f[0][1] - f[0][0]*f[2][1]) + f[2][2]*(f[0][0]*f[1][1] - f[1][0]*f[0][1]);
-                                    Coord zx_numerator =  f[2][1]*(f[0][2] + f[1][2]) + f[0][1]*(f[1][2] - f[2][2]) - f[1][1]*(f[0][2] + f[2][2]); Coord zx_denominator = f[0][2]*(f[1][0]*f[2][1] - f[2][0]*f[1][1]) + f[1][2]*(f[2][0]*f[0][1] - f[0][0]*f[2][1]) + f[2][2]*(f[0][0]*f[1][1] - f[1][0]*f[0][1]);
-                                    Coord zy_numerator = -f[2][0]*(f[0][2] + f[1][2]) + f[1][0]*(f[0][2] + f[2][2]) + f[0][0]*(f[2][2] - f[1][2]); Coord zy_denominator = f[0][2]*(f[1][0]*f[2][1] - f[2][0]*f[1][1]) + f[1][2]*(f[2][0]*f[0][1] - f[0][0]*f[2][1]) + f[2][2]*(f[0][0]*f[1][1] - f[1][0]*f[0][1]);
-                                    Coord zz_numerator =  f[2][0]*(f[0][1] + f[1][1]) + f[0][0]*(f[1][1] - f[2][1]) - f[1][0]*(f[0][1] + f[2][1]); Coord zz_denominator = f[0][2]*(f[1][0]*f[2][1] - f[2][0]*f[1][1]) + f[1][2]*(f[2][0]*f[0][1] - f[0][0]*f[2][1]) + f[2][2]*(f[0][0]*f[1][1] - f[1][0]*f[0][1]);
-                                    */
 #ifdef DEBUG_PRINT
                                     printf(
                                         "[%" PRId64 ", %" PRId64 ", %" PRId64 "], [%" PRId64 ", %" PRId64 ", %" PRId64 "], [%" PRId64 ", %" PRId64 ", %" PRId64 "], [%" PRId64 ", %" PRId64 ", %" PRId64 "]  "
@@ -343,7 +318,6 @@ int main(int argc, char *argv[])
                         // choose the "least" of these rotations, so it can later be compared for equality by others of its kind
                         auto polytetToCompare = rotationsOfThisPolytet.cbegin();
                         const Polytet *polytetToAdd = &*polytetToCompare;
-                    //if (outer<=2)
                         while (polytetToCompare != rotationsOfThisPolytet.cend())
                         {
                             ++polytetToCompare;
