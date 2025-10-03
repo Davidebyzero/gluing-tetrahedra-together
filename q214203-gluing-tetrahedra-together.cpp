@@ -88,6 +88,9 @@ Coord dot(const Coord3 &a, const Coord3 &b)
 }
 bool volumesOverlap(const Tetrahedron &a, const Tetrahedron &b)
 {
+    // Take advantage of the fact that the two tetrahedrons are regular and congruent, and
+    // just check if any edge of tetrahedron "a" intersects with any face of tetrahedron "b".
+    // Don't count it if only the endpoint of an edge intersects.
     static int edges[6][2] =
     {
         {0, 1},
