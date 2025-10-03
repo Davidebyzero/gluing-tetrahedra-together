@@ -11,7 +11,7 @@
 //#define DEBUG_PRINT
 //#define DEBUG_PRINT2
 
-typedef int64_t Coord;
+typedef __int128 Coord;
 typedef std::array<Coord, 3> Coord3;
 typedef std::array<Coord3, 4> Tetrahedron;
 class Tet
@@ -218,8 +218,9 @@ int main(int argc, char *argv[])
     for (int outer=1;;)
     {
         printf("%d: %d\n", outer, polytets->size());
-        if (++outer > 7)
-            break;
+        ++outer;
+        /*if (outer > 6)
+            break;*/
         power3 *= 3;
         auto *newPolytets = new std::list<Polytet>;
         for (auto basePolytet=polytets->cbegin(); basePolytet!=polytets->cend(); ++basePolytet)
