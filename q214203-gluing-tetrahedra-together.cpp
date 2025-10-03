@@ -244,10 +244,18 @@ int main(int argc, char *argv[])
     Coord power3 = 1;
     auto *polytets = new std::unordered_set<Polytet>;
     polytets->insert(startPolytet);
+    size_t prevPolytetCount = 0;
     for (int tetCount=1;;)
     {
         auto currentTime = std::chrono::steady_clock::now();
-        std::cout << tetCount << ": " << polytets->size() << " [" << std::chrono::duration_cast<std::chrono::milliseconds>(currentTime - startTime).count() << " ms]" << std::endl;
+        size_t polytetCount = polytets->size();
+        std::cout << tetCount << ": " << polytetCount << " [" << std::chrono::duration_cast<std::chrono::milliseconds>(currentTime - startTime).count() << " ms]" << std::endl;
+        if (prevPolytetCount > polytetCount)
+        {
+            std::cerr << "Quit due to apparent overflow" << std::endl;
+            break;
+        }
+        prevPolytetCount = polytetCount;
         ++tetCount;
 #ifdef DEBUG_PRINT
         if (tetCount > 6)
