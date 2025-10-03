@@ -152,32 +152,28 @@ bool volumesOverlap(const Tetrahedron &a, const Tetrahedron &b)
     return false;
 }
 
-class NormalizedTetrahedron : public Tetrahedron
+class NormalizedPolytet : public std::vector<Tetrahedron>
 {
 public:
-    NormalizedTetrahedron(const Tetrahedron &t)
+    NormalizedPolytet(const Polytet &polytet)
     {
-        *(Tetrahedron*)this = t;
+        reserve(polytet.size());
+        for (auto tet=polytet.cbegin(); tet!=polytet.cend(); ++tet)
+        {
+            Tetrahedron &t = emplace_back(tet->t);
+            std::sort(t.begin(), t.end());
+        }
         std::sort(this->begin(), this->end());
     }
 };
 
-bool operator<(const Tet &_a, const Tet &_b)
-{
-    NormalizedTetrahedron a(_a.t), b(_b.t);
-    return a < b;
-}
-
 bool operator<(const Polytet &_a, const Polytet &_b)
 // implicitly assume a.size()==b.size()
 {
-    Polytet a(_a), b(_b);
-    std::sort(begin(a), end(a));
-    std::sort(begin(b), end(b));
+    NormalizedPolytet a(_a), b(_b);
     for (auto ta=a.cbegin(), tb=b.cbegin(); ta!=a.cend(); ++ta,++tb)
     {
-        NormalizedTetrahedron tan(ta->t), tbn(tb->t);
-        auto result = tan <=> tbn;
+        auto result = *ta <=> *tb;
         if (result != 0)
             return result < 0;
     }
@@ -190,13 +186,10 @@ bool operator>(const Polytet &a, const Polytet &b)
 bool operator==(const Polytet &_a, const Polytet &_b)
 // implicitly assume a.size()==b.size()
 {
-    Polytet a(_a), b(_b);
-    std::sort(begin(a), end(a));
-    std::sort(begin(b), end(b));
+    NormalizedPolytet a(_a), b(_b);
     for (auto ta=a.cbegin(), tb=b.cbegin(); ta!=a.cend(); ++ta,++tb)
     {
-        NormalizedTetrahedron tan(ta->t), tbn(tb->t);
-        auto result = tan <=> tbn;
+        auto result = *ta <=> *tb;
         if (result != 0)
             return false;
     }
@@ -210,18 +203,18 @@ namespace std
     {
         std::size_t operator()(const Polytet &_polytet) const noexcept
         {
-            Polytet polytet(_polytet);
-            std::sort(begin(polytet), end(polytet));
+            NormalizedPolytet polytet(_polytet);
             std::size_t seed = polytet.size();
-            for (auto tet=polytet.cbegin(); tet!=polytet.cend(); ++tet)
+            for (auto t=polytet.cbegin(); t!=polytet.cend(); ++t)
             {
-                NormalizedTetrahedron t(tet->t);
-                for (auto c=t.cbegin(); c!=t.cend(); ++c)
+                for (auto c=t->cbegin(); c!=t->cend(); ++c)
+                {
                     for (auto i=c->cbegin(); i!=c->cend(); ++i)
                     {
                         seed ^= std::hash<uint64_t>{}((uint64_t)(*i      )) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
                         seed ^= std::hash<uint64_t>{}((uint64_t)(*i >> 64)) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
                     }
+                }
             }
             return seed;
         }
