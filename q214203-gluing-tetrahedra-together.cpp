@@ -278,6 +278,7 @@ int main(int argc, char *argv[])
     mpz_init(power9_2); mpz_set_ui(power9_2, 2);
     mpz_t
         x , y , z ,
+        x0, y0, z0,
         x1, y1, z1,
         x2, y2, z2,
         x3, y3, z3,
@@ -292,6 +293,7 @@ int main(int argc, char *argv[])
         zz_numerator_mpz, zz_denominator_mpz;
     mpz_inits(
         x , y , z ,
+        x0, y0, z0,
         x1, y1, z1,
         x2, y2, z2,
         x3, y3, z3,
@@ -429,9 +431,23 @@ int main(int argc, char *argv[])
                                 Coord zx_numerator =  -((n[0][1] - n[3][1])*(n[1][2] - n[2][2])) + (n[1][1] - n[2][1])*(n[0][2] - n[3][2]) ; Coord zx_denominator = (-(n[1][0]*n[2][1]*n[0][2]) + n[1][0]*n[3][1]*n[0][2] + n[0][0]*n[2][1]*n[1][2] - n[0][0]*n[3][1]*n[1][2] + n[1][0]*n[0][1]*n[2][2] - n[0][0]*n[1][1]*n[2][2] + n[0][0]*n[3][1]*n[2][2] - n[1][0]*n[3][1]*n[2][2] + n[3][0]*(-(n[1][1]*n[0][2]) + n[2][1]*n[0][2] + n[0][1]*n[1][2] - n[2][1]*n[1][2] - n[0][1]*n[2][2] + n[1][1]*n[2][2]) + (-(n[1][0]*n[0][1]) + n[0][0]*n[1][1] - n[0][0]*n[2][1] + n[1][0]*n[2][1])*n[3][2] + n[2][0]*(-(n[3][1]*n[0][2]) - n[0][1]*n[1][2] + n[3][1]*n[1][2] + n[1][1]*(n[0][2] - n[3][2]) + n[0][1]*n[3][2]));
                                 Coord zy_numerator =   ( n[0][0] - n[3][0])*(n[1][2] - n[2][2])  - (n[1][0] - n[2][0])*(n[0][2] - n[3][2]) ; Coord zy_denominator = (-(n[1][0]*n[2][1]*n[0][2]) + n[1][0]*n[3][1]*n[0][2] + n[0][0]*n[2][1]*n[1][2] - n[0][0]*n[3][1]*n[1][2] + n[1][0]*n[0][1]*n[2][2] - n[0][0]*n[1][1]*n[2][2] + n[0][0]*n[3][1]*n[2][2] - n[1][0]*n[3][1]*n[2][2] + n[3][0]*(-(n[1][1]*n[0][2]) + n[2][1]*n[0][2] + n[0][1]*n[1][2] - n[2][1]*n[1][2] - n[0][1]*n[2][2] + n[1][1]*n[2][2]) + (-(n[1][0]*n[0][1]) + n[0][0]*n[1][1] - n[0][0]*n[2][1] + n[1][0]*n[2][1])*n[3][2] + n[2][0]*(-(n[3][1]*n[0][2]) - n[0][1]*n[1][2] + n[3][1]*n[1][2] + n[1][1]*(n[0][2] - n[3][2]) + n[0][1]*n[3][2]));
                                 Coord zz_numerator =   ( n[0][0] - n[3][0])*(n[1][1] - n[2][1])  - (n[1][0] - n[2][0])*(n[0][1] - n[3][1]) ; Coord zz_denominator = ( n[1][0]*n[2][1]*n[0][2] - n[1][0]*n[3][1]*n[0][2] - n[0][0]*n[2][1]*n[1][2] + n[0][0]*n[3][1]*n[1][2] - n[1][0]*n[0][1]*n[2][2] + n[0][0]*n[1][1]*n[2][2] - n[0][0]*n[3][1]*n[2][2] + n[1][0]*n[3][1]*n[2][2] + n[3][0]*(n[1][1]*n[0][2] - n[2][1]*n[0][2] - n[0][1]*n[1][2] + n[2][1]*n[1][2] + n[0][1]*n[2][2] - n[1][1]*n[2][2]) + n[1][0]*n[0][1]*n[3][2] - n[0][0]*n[1][1]*n[3][2] + n[0][0]*n[2][1]*n[3][2] - n[1][0]*n[2][1]*n[3][2] + n[2][0]*(n[3][1]*n[0][2] + n[0][1]*n[1][2] - n[3][1]*n[1][2] - n[0][1]*n[3][2] + n[1][1]*(-n[0][2] + n[3][2])));
-                                Coord x0 = ( n[1][0]*n[2][1]*n[0][2] - n[1][0]*n[3][1]*n[0][2] - n[0][0]*n[2][1]*n[1][2] + n[0][0]*n[3][1]*n[1][2] - n[1][0]*n[0][1]*n[2][2] + n[0][0]*n[1][1]*n[2][2] + n[0][0]*n[3][1]*n[2][2] - n[1][0]*n[3][1]*n[2][2] + n[3][0]*(n[2][1]*(n[0][2] - n[1][2]) + n[1][1]*(n[0][2] + n[2][2]) - n[0][1]*(n[1][2] + n[2][2])) + n[1][0]*(n[0][1] + n[2][1])*n[3][2] - n[0][0]*(n[1][1] + n[2][1])*n[3][2] + n[2][0]*(n[3][1]*(-n[0][2] + n[1][2]) - n[1][1]*(n[0][2] + n[3][2]) + n[0][1]*(n[1][2] + n[3][2])));
-                                Coord y0 = ( n[1][0]*n[2][1]*n[0][2] + n[1][0]*n[3][1]*n[0][2] - n[0][0]*n[2][1]*n[1][2] - n[0][0]*n[3][1]*n[1][2] - n[3][0]*((n[1][1] + n[2][1])*n[0][2] + (-n[0][1] + n[2][1])*n[1][2]) - n[1][0]*n[0][1]*n[2][2] + n[0][0]*n[1][1]*n[2][2] + n[3][0]*(n[0][1] + n[1][1])*n[2][2] - n[0][0]*n[3][1]*n[2][2] - n[1][0]*n[3][1]*n[2][2] + (-(n[1][0]*n[0][1]) + n[0][0]*n[1][1] + (n[0][0] + n[1][0])*n[2][1])*n[3][2] + n[2][0]*(n[3][1]*(n[0][2] + n[1][2]) + n[0][1]*(n[1][2] - n[3][2]) - n[1][1]*(n[0][2] + n[3][2])));
-                                Coord z0 = (-n[1][0]*n[2][1]*n[0][2] - n[1][0]*n[3][1]*n[0][2] + n[0][0]*n[2][1]*n[1][2] + n[0][0]*n[3][1]*n[1][2] - n[3][0]*n[2][1]*(n[0][2] + n[1][2]) + n[1][0]*n[0][1]*n[2][2] - n[0][0]*n[1][1]*n[2][2] - n[0][0]*n[3][1]*n[2][2] - n[1][0]*n[3][1]*n[2][2] + n[3][0]*n[1][1]*(n[0][2] + n[2][2]) + n[3][0]*n[0][1]*(-n[1][2] + n[2][2]) + n[1][0]*(n[0][1] + n[2][1])*n[3][2] + n[0][0]*(-n[1][1] + n[2][1])*n[3][2] + n[2][0]*(n[3][1]*(n[0][2] + n[1][2]) + n[1][1]*(n[0][2] - n[3][2]) - n[0][1]*(n[1][2] + n[3][2])));
+                                Coord x0_ = ( n[1][0]*n[2][1]*n[0][2] - n[1][0]*n[3][1]*n[0][2] - n[0][0]*n[2][1]*n[1][2] + n[0][0]*n[3][1]*n[1][2] - n[1][0]*n[0][1]*n[2][2] + n[0][0]*n[1][1]*n[2][2] + n[0][0]*n[3][1]*n[2][2] - n[1][0]*n[3][1]*n[2][2] + n[3][0]*(n[2][1]*(n[0][2] - n[1][2]) + n[1][1]*(n[0][2] + n[2][2]) - n[0][1]*(n[1][2] + n[2][2])) + n[1][0]*(n[0][1] + n[2][1])*n[3][2] - n[0][0]*(n[1][1] + n[2][1])*n[3][2] + n[2][0]*(n[3][1]*(-n[0][2] + n[1][2]) - n[1][1]*(n[0][2] + n[3][2]) + n[0][1]*(n[1][2] + n[3][2])));
+                                Coord y0_ = ( n[1][0]*n[2][1]*n[0][2] + n[1][0]*n[3][1]*n[0][2] - n[0][0]*n[2][1]*n[1][2] - n[0][0]*n[3][1]*n[1][2] - n[3][0]*((n[1][1] + n[2][1])*n[0][2] + (-n[0][1] + n[2][1])*n[1][2]) - n[1][0]*n[0][1]*n[2][2] + n[0][0]*n[1][1]*n[2][2] + n[3][0]*(n[0][1] + n[1][1])*n[2][2] - n[0][0]*n[3][1]*n[2][2] - n[1][0]*n[3][1]*n[2][2] + (-(n[1][0]*n[0][1]) + n[0][0]*n[1][1] + (n[0][0] + n[1][0])*n[2][1])*n[3][2] + n[2][0]*(n[3][1]*(n[0][2] + n[1][2]) + n[0][1]*(n[1][2] - n[3][2]) - n[1][1]*(n[0][2] + n[3][2])));
+                                Coord z0_ = (-n[1][0]*n[2][1]*n[0][2] - n[1][0]*n[3][1]*n[0][2] + n[0][0]*n[2][1]*n[1][2] + n[0][0]*n[3][1]*n[1][2] - n[3][0]*n[2][1]*(n[0][2] + n[1][2]) + n[1][0]*n[0][1]*n[2][2] - n[0][0]*n[1][1]*n[2][2] - n[0][0]*n[3][1]*n[2][2] - n[1][0]*n[3][1]*n[2][2] + n[3][0]*n[1][1]*(n[0][2] + n[2][2]) + n[3][0]*n[0][1]*(-n[1][2] + n[2][2]) + n[1][0]*(n[0][1] + n[2][1])*n[3][2] + n[0][0]*(-n[1][1] + n[2][1])*n[3][2] + n[2][0]*(n[3][1]*(n[0][2] + n[1][2]) + n[1][1]*(n[0][2] - n[3][2]) - n[0][1]*(n[1][2] + n[3][2])));
+#ifdef USE_GMP
+                                mpz_set_int128(xx_numerator_mpz, xx_numerator); mpz_set_int128(xx_denominator_mpz, xx_denominator);
+                                mpz_set_int128(xy_numerator_mpz, xy_numerator); mpz_set_int128(xy_denominator_mpz, xy_denominator);
+                                mpz_set_int128(xz_numerator_mpz, xz_numerator); mpz_set_int128(xz_denominator_mpz, xz_denominator);
+                                mpz_set_int128(yx_numerator_mpz, yx_numerator); mpz_set_int128(yx_denominator_mpz, yx_denominator);
+                                mpz_set_int128(yy_numerator_mpz, yy_numerator); mpz_set_int128(yy_denominator_mpz, yy_denominator);
+                                mpz_set_int128(yz_numerator_mpz, yz_numerator); mpz_set_int128(yz_denominator_mpz, yz_denominator);
+                                mpz_set_int128(zx_numerator_mpz, zx_numerator); mpz_set_int128(zx_denominator_mpz, zx_denominator);
+                                mpz_set_int128(zy_numerator_mpz, zy_numerator); mpz_set_int128(zy_denominator_mpz, zy_denominator);
+                                mpz_set_int128(zz_numerator_mpz, zz_numerator); mpz_set_int128(zz_denominator_mpz, zz_denominator);
+                                mpz_set_int128(x0, x0_);
+                                mpz_set_int128(y0, y0_);
+                                mpz_set_int128(z0, z0_);
+#endif
                                 // Apply the affine transformation to the polytet
                                 Polytet newRotatedPolytet;
                                 newRotatedPolytet.reserve(tetCount);
@@ -445,19 +461,9 @@ int main(int argc, char *argv[])
                                         mpz_set_int128(y1, tetToRotate->t[vertexNum][1]);
                                         mpz_set_int128(z1, tetToRotate->t[vertexNum][2]);
 
-                                        mpz_set_int128(xx_numerator_mpz, xx_numerator); mpz_set_int128(xx_denominator_mpz, xx_denominator);
-                                        mpz_set_int128(xy_numerator_mpz, xy_numerator); mpz_set_int128(xy_denominator_mpz, xy_denominator);
-                                        mpz_set_int128(xz_numerator_mpz, xz_numerator); mpz_set_int128(xz_denominator_mpz, xz_denominator);
-                                        mpz_set_int128(yx_numerator_mpz, yx_numerator); mpz_set_int128(yx_denominator_mpz, yx_denominator);
-                                        mpz_set_int128(yy_numerator_mpz, yy_numerator); mpz_set_int128(yy_denominator_mpz, yy_denominator);
-                                        mpz_set_int128(yz_numerator_mpz, yz_numerator); mpz_set_int128(yz_denominator_mpz, yz_denominator);
-                                        mpz_set_int128(zx_numerator_mpz, zx_numerator); mpz_set_int128(zx_denominator_mpz, zx_denominator);
-                                        mpz_set_int128(zy_numerator_mpz, zy_numerator); mpz_set_int128(zy_denominator_mpz, zy_denominator);
-                                        mpz_set_int128(zz_numerator_mpz, zz_numerator); mpz_set_int128(zz_denominator_mpz, zz_denominator);
-
-                                        mpz_set_int128(x, x0); mpz_mul(x, x, power3); mpz_div(x, x, zz_denominator_mpz);
-                                        mpz_set_int128(y, y0); mpz_mul(y, y, power3); mpz_div(y, y, zz_denominator_mpz);
-                                        mpz_set_int128(z, z0); mpz_mul(z, z, power3); mpz_div(z, z, zz_denominator_mpz);
+                                        mpz_set(x, x0); mpz_mul(x, x, power3); mpz_div(x, x, zz_denominator_mpz);
+                                        mpz_set(y, y0); mpz_mul(y, y, power3); mpz_div(y, y, zz_denominator_mpz);
+                                        mpz_set(z, z0); mpz_mul(z, z, power3); mpz_div(z, z, zz_denominator_mpz);
 
                                         mpz_set(x2, x1); mpz_mul(x2, x2, xx_numerator_mpz); mpz_mul(x2, x2, power9_2); mpz_div(x2, x2, xx_denominator_mpz);
                                         mpz_set(x3, y1); mpz_mul(x3, x3, xy_numerator_mpz); mpz_mul(x3, x3, power9_2); mpz_div(x3, x3, xy_denominator_mpz); mpz_add(x2, x2, x3);
@@ -474,9 +480,9 @@ int main(int argc, char *argv[])
                                         mpz_get_int128(nt.t[vertexNum][2], z);
 
 #else
-                                        nt.t[vertexNum][0] = x0*power3/zz_denominator + (tetToRotate->t[vertexNum][0]*xx_numerator*power9_2/xx_denominator + tetToRotate->t[vertexNum][1]*xy_numerator*power9_2/xy_denominator + tetToRotate->t[vertexNum][2]*xz_numerator*power9_2/xz_denominator)/power3;
-                                        nt.t[vertexNum][1] = y0*power3/zz_denominator + (tetToRotate->t[vertexNum][0]*yx_numerator*power9_2/yx_denominator + tetToRotate->t[vertexNum][1]*yy_numerator*power9_2/yy_denominator + tetToRotate->t[vertexNum][2]*yz_numerator*power9_2/yz_denominator)/power3;
-                                        nt.t[vertexNum][2] = z0*power3/zz_denominator + (tetToRotate->t[vertexNum][0]*zx_numerator*power9_2/zx_denominator + tetToRotate->t[vertexNum][1]*zy_numerator*power9_2/zy_denominator + tetToRotate->t[vertexNum][2]*zz_numerator*power9_2/zz_denominator)/power3;
+                                        nt.t[vertexNum][0] = x0_*power3/zz_denominator + (tetToRotate->t[vertexNum][0]*xx_numerator*power9_2/xx_denominator + tetToRotate->t[vertexNum][1]*xy_numerator*power9_2/xy_denominator + tetToRotate->t[vertexNum][2]*xz_numerator*power9_2/xz_denominator)/power3;
+                                        nt.t[vertexNum][1] = y0_*power3/zz_denominator + (tetToRotate->t[vertexNum][0]*yx_numerator*power9_2/yx_denominator + tetToRotate->t[vertexNum][1]*yy_numerator*power9_2/yy_denominator + tetToRotate->t[vertexNum][2]*yz_numerator*power9_2/yz_denominator)/power3;
+                                        nt.t[vertexNum][2] = z0_*power3/zz_denominator + (tetToRotate->t[vertexNum][0]*zx_numerator*power9_2/zx_denominator + tetToRotate->t[vertexNum][1]*zy_numerator*power9_2/zy_denominator + tetToRotate->t[vertexNum][2]*zz_numerator*power9_2/zz_denominator)/power3;
 #endif
                                     }
                                     memcpy(nt.faceAttached, tetToRotate->faceAttached, sizeof(nt.faceAttached));
