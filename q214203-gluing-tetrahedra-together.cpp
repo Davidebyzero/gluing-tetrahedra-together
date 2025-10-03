@@ -320,7 +320,7 @@ int main(int argc, char *argv[])
                         Polytet runningLeastPolytet;
                         for (auto tetToRotateNormalize=newPolytet.cbegin(); tetToRotateNormalize!=newPolytet.cend(); ++tetToRotateNormalize)
                         {
-                            // only rotate-normalize to tetrahedrons with 1 attached face; every polytet is guaranteed to have some
+                            // only rotate-normalize to tetrahedrons with exactly 1 attached face; every polytet is guaranteed to have some
                             int faceToRotateNormalize;
                             {
                                 int attachCount = 0;
