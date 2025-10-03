@@ -243,11 +243,11 @@ int main(int argc, char *argv[])
     Coord power3 = 1;
     auto *polytets = new std::unordered_set<Polytet>;
     polytets->insert(startPolytet);
-    for (int outer=1;;)
+    for (int tetCount=1;;)
     {
-        printf("%d: %d\n", outer, polytets->size());
-        ++outer;
-        /*if (outer > 6)
+        printf("%d: %d\n", tetCount, polytets->size());
+        ++tetCount;
+        /*if (tetCount > 6)
             break;*/
         power3 *= 3;
         auto *newPolytets = new std::unordered_set<Polytet>;
@@ -260,6 +260,7 @@ int main(int argc, char *argv[])
                     if (!tetToAttachTo->faceAttached[faceNum])
                     {
                         Polytet newPolytet;
+                        newPolytet.reserve(tetCount);
                         Tet *tetCopyToAttachTo; // take note of this just for speed
                         for (auto tetToCopy=basePolytet->cbegin(); tetToCopy!=basePolytet->cend(); ++tetToCopy)
                         {
@@ -348,6 +349,7 @@ int main(int argc, char *argv[])
                                 Coord z0 = (-n[1][0]*n[2][1]*n[0][2] - n[1][0]*n[3][1]*n[0][2] + n[0][0]*n[2][1]*n[1][2] + n[0][0]*n[3][1]*n[1][2] - n[3][0]*n[2][1]*(n[0][2] + n[1][2]) + n[1][0]*n[0][1]*n[2][2] - n[0][0]*n[1][1]*n[2][2] - n[0][0]*n[3][1]*n[2][2] - n[1][0]*n[3][1]*n[2][2] + n[3][0]*n[1][1]*(n[0][2] + n[2][2]) + n[3][0]*n[0][1]*(-n[1][2] + n[2][2]) + n[1][0]*(n[0][1] + n[2][1])*n[3][2] + n[0][0]*(-n[1][1] + n[2][1])*n[3][2] + n[2][0]*(n[3][1]*(n[0][2] + n[1][2]) + n[1][1]*(n[0][2] - n[3][2]) - n[0][1]*(n[1][2] + n[3][2])));
                                 // Add this rotation of this polytet
                                 Polytet newRotatedPolytet;
+                                newRotatedPolytet.reserve(tetCount);
                                 for (auto tetToRotate=newPolytet.cbegin(); tetToRotate!=newPolytet.cend(); ++tetToRotate)
                                 {
                                     Tet &nt = newRotatedPolytet.emplace_back();
