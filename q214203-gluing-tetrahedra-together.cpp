@@ -31,6 +31,15 @@ public:
 };
 typedef std::vector<Tet> Polytet;
 
+// vertex indices of faces with identical chirality
+static int tetrahedronFaces[4][4] =
+{
+    {0, 1, 2, 3},
+    {0, 3, 1, 2},
+    {0, 2, 3, 1},
+    {1, 3, 2, 0},
+};
+
 Coord3 operator-(const Coord3 &a)
 {
     Coord3 c;
@@ -39,12 +48,28 @@ Coord3 operator-(const Coord3 &a)
     c[2] = -a[2];
     return c;
 }
+Coord3 operator+(const Coord3 &a, const Coord3 &b)
+{
+    Coord3 c;
+    c[0] = a[0] + b[0];
+    c[1] = a[1] + b[1];
+    c[2] = a[2] + b[2];
+    return c;
+}
 Coord3 operator-(const Coord3 &a, const Coord3 &b)
 {
     Coord3 c;
     c[0] = a[0] - b[0];
     c[1] = a[1] - b[1];
     c[2] = a[2] - b[2];
+    return c;
+}
+Coord3 operator*(const Coord3 &a, const Coord b)
+{
+    Coord3 c;
+    c[0] = a[0] * b;
+    c[1] = a[1] * b;
+    c[2] = a[2] * b;
     return c;
 }
 Coord3 cross(const Coord3 a, const Coord3 b)
@@ -59,24 +84,72 @@ Coord dot(const Coord3 &a, const Coord3 &b)
 {
     return a[0]*b[0] + a[1]*b[1] + a[2]*b[2];
 }
-bool pointInTetrahedron(const Coord3 &p, const Tetrahedron &t)
+bool volumesOverlap(const Tetrahedron &a, const Tetrahedron &b)
 {
-    Coord3 n0 = cross(t[1]-t[0], t[2]-t[0]);
-    Coord3 n1 = cross(t[1]-t[0], t[3]-t[0]);
-    Coord3 n2 = cross(t[2]-t[0], t[3]-t[0]);
-    Coord3 n3 = cross(t[2]-t[1], t[3]-t[1]);
-    Coord3 center;
-    center[0] = (t[0][0] + t[1][0] + t[2][0] + t[3][0]) / 4;
-    center[1] = (t[0][1] + t[1][1] + t[2][1] + t[3][1]) / 4;
-    center[2] = (t[0][2] + t[1][2] + t[2][2] + t[3][2]) / 4;
-    if (dot((center - t[0]), n0) > 0) n0 = -n0;
-    if (dot((center - t[0]), n1) > 0) n1 = -n1;
-    if (dot((center - t[0]), n2) > 0) n2 = -n2;
-    if (dot((center - t[1]), n3) > 0) n3 = -n3;
-    return dot(p - t[0], n0) < 0 &&
-           dot(p - t[0], n1) < 0 &&
-           dot(p - t[0], n2) < 0 &&
-           dot(p - t[1], n3) < 0;
+    static int edges[6][2] =
+    {
+        {0, 1},
+        {1, 2},
+        {2, 0},
+        {0, 3},
+        {1, 3},
+        {2, 3},
+    };
+    for (int edgeNum=0; edgeNum<6; edgeNum++)
+    {
+        Coord3 p0 = a[edges[edgeNum][0]];
+        Coord3 p1 = a[edges[edgeNum][1]];
+        for (int faceNum=0; faceNum<4; faceNum++)
+        {
+            Tetrahedron normalizedTetrahedron; // first 3 points are the face, and the 4th point is for calculating the normal
+            for (int i=0; i<4; i++)
+                normalizedTetrahedron[i] = b[tetrahedronFaces[faceNum][i]];
+            Coord3 center = {{0, 0, 0}}; // multiplied by 3 compared to original coordinates
+            // Get center of face by averaging its vertices' coordinates; the
+            // division by 3 is implied by omitting the multiplication by 3.
+            for (int p=0; p<3; p++)
+                for (int d=0; d<3; d++)
+                    center[d] += normalizedTetrahedron[p][d];
+            Coord3 normal;
+            for (int d=0; d<3; d++)
+                normal[d] = normalizedTetrahedron[3][d] * 3 - center[d];
+            Coord intersectNumerator   = dot(normal, normalizedTetrahedron[0] - p0);
+            Coord intersectDenominator = dot(normal,                       p1 - p0);
+            if (intersectDenominator == 0)
+                continue; // edge is parallel to face, which we don't count as an overlap
+            if (intersectDenominator < 0)
+            {
+                intersectNumerator   = -intersectNumerator;
+                intersectDenominator = -intersectDenominator;
+            }
+            if (intersectNumerator <= 0 || intersectNumerator >= intersectDenominator)
+                continue;
+            // These coordinates are all multiplied by intersectDenominator
+            Coord3 intersectionPoint = p0 * intersectDenominator + (p1 - p0) * intersectNumerator;
+            Coord3 triangle[3];
+            for (int i=0; i<3; i++)
+                triangle[i] = normalizedTetrahedron[i] * intersectDenominator;
+            Coord3 d = intersectionPoint - triangle[0];
+            Coord3 edge1 = triangle[1] - triangle[0];
+            Coord3 edge2 = triangle[2] - triangle[0];
+            Coord uNumerator = d[1]*edge2[0] - d[0]*edge2[1];
+            Coord vNumerator = d[0]*edge1[1] - d[1]*edge1[0];
+            Coord uvDenominator = edge1[1]*edge2[0] - edge1[0]*edge2[1];
+            if (uvDenominator == 0)
+                continue;
+            if (uvDenominator < 0)
+            {
+                uNumerator = -uNumerator;
+                vNumerator = -vNumerator;
+                uvDenominator = -uvDenominator;
+            }
+            if (uNumerator <= 0 || vNumerator <= 0)
+                continue;
+            if (uNumerator + vNumerator < uvDenominator)
+                return true;
+        }
+    }
+    return false;
 }
 
 class NormalizedTetrahedron : public Tetrahedron
@@ -145,7 +218,7 @@ int main(int argc, char *argv[])
     for (int outer=1;;)
     {
         printf("%d: %d\n", outer, polytets->size());
-        if (++outer > 6)
+        if (++outer > 7)
             break;
         power3 *= 3;
         auto *newPolytets = new std::list<Polytet>;
@@ -184,16 +257,6 @@ int main(int argc, char *argv[])
                         }
                         for (int d=0; d<3; d++)
                             newVertex[d] += newVertex[d] - tetToAttachTo->t[3 - faceNum][d] * 3;
-                        for (auto tetCheckIntersection=newPolytet.cbegin(); tetCheckIntersection!=newPolytet.cend(); ++tetCheckIntersection)
-                        {
-                            if (&*tetCheckIntersection == tetCopyToAttachTo)
-                                continue; // skip this check for speed (it'll always be false anyway)
-                            if (pointInTetrahedron(newVertex, tetCheckIntersection->t))
-                            {
-                                //newPolytets->resize(newPolytets->size() - 1);
-                                goto discardThisNewPolytet;
-                            }
-                        }
                         // Add new tetrahedron
                         Tet &t = newPolytet.emplace_back();
                         for (int p=0; p<3; p++)
@@ -210,6 +273,14 @@ int main(int argc, char *argv[])
                         t.faceAttached[1] = false;
                         t.faceAttached[2] = false;
                         t.faceAttached[3] = false;
+                        // Check for overlap between this newly attached tetrahedron and the existing ones
+                        for (auto tetCheckIntersection=newPolytet.cbegin(); tetCheckIntersection!=newPolytet.cend(); ++tetCheckIntersection)
+                        {
+                            if (&*tetCheckIntersection == tetCopyToAttachTo)
+                                continue; // skip this check for speed (it'll always be false anyway)
+                            if (volumesOverlap(t.t, tetCheckIntersection->t))
+                                goto discardThisNewPolytet;
+                        }
                         //
                         std::list<Polytet> rotationsOfThisPolytet;
                         for (auto tetToRotateNormalize=newPolytet.cbegin(); tetToRotateNormalize!=newPolytet.cend(); ++tetToRotateNormalize)
@@ -229,19 +300,11 @@ int main(int argc, char *argv[])
                                 tetToRotateNormalize->t[2][0], tetToRotateNormalize->t[2][1], tetToRotateNormalize->t[2][2],
                                 tetToRotateNormalize->t[3][0], tetToRotateNormalize->t[3][1], tetToRotateNormalize->t[3][2]);
 #endif
-                            // vertex indices of faces with identical chirality
-                            static int transformFaces[4][4] =
-                            {
-                                {0, 1, 2, 3},
-                                {0, 3, 1, 2},
-                                {0, 2, 3, 1},
-                                {1, 3, 2, 0},
-                            };
                             for (int faceToRotateNormalize=0; faceToRotateNormalize<4; faceToRotateNormalize++)
                             {
                                 Tetrahedron n;
                                 for (int i=0; i<4; i++)
-                                    n[i] = tetToRotateNormalize->t[transformFaces[faceToRotateNormalize][i]];
+                                    n[i] = tetToRotateNormalize->t[tetrahedronFaces[faceToRotateNormalize][i]];
                                 for (int faceRotation=0; faceRotation<3; faceRotation++)
                                 {
                                     Coord xx_numerator = power3*(  ( n[2][1] - n[3][1])*(n[0][2] - n[1][2])  - (n[0][1] - n[1][1])*(n[2][2] - n[3][2]) ); Coord xx_denominator = (-(n[1][0]*n[2][1]*n[0][2]) + n[1][0]*n[3][1]*n[0][2] + n[0][0]*n[2][1]*n[1][2] - n[0][0]*n[3][1]*n[1][2] + n[1][0]*n[0][1]*n[2][2] - n[0][0]*n[1][1]*n[2][2] + n[0][0]*n[3][1]*n[2][2] - n[1][0]*n[3][1]*n[2][2] + n[3][0]*(-(n[1][1]*n[0][2]) + n[2][1]*n[0][2] + n[0][1]*n[1][2] - n[2][1]*n[1][2] - n[0][1]*n[2][2] + n[1][1]*n[2][2]) + (-(n[1][0]*n[0][1]) + n[0][0]*n[1][1] - n[0][0]*n[2][1] + n[1][0]*n[2][1])*n[3][2] + n[2][0]*(-(n[3][1]*n[0][2]) - n[0][1]*n[1][2] + n[3][1]*n[1][2] + n[1][1]*(n[0][2] - n[3][2]) + n[0][1]*n[3][2]));
