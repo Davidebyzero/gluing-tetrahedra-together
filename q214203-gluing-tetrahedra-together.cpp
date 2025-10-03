@@ -383,7 +383,6 @@ int main(int argc, char *argv[])
                 }
             }
         }
-        
 #ifdef DEBUG_PRINT
         for (auto thisPolytet=newPolytets->cbegin(); thisPolytet!=newPolytets->cend(); ++thisPolytet)
         {
@@ -401,7 +400,6 @@ int main(int argc, char *argv[])
             printf("}\n");
         }
 #endif
-        
         delete polytets;
         polytets = newPolytets;
     }
