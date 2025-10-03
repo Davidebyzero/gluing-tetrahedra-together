@@ -310,8 +310,9 @@ int main(int argc, char *argv[])
                             if (volumesOverlap(t.t, tetCheckIntersection->t))
                                 goto discardThisNewPolytet;
                         }
-                        //
-                        std::list<Polytet> rotationsOfThisPolytet;
+                        // Canonicalize the rotation of this new polytet, so that it can be compared against others
+                        bool haveRunningLeast = false;
+                        Polytet runningLeastPolytet;
                         for (auto tetToRotateNormalize=newPolytet.cbegin(); tetToRotateNormalize!=newPolytet.cend(); ++tetToRotateNormalize)
                         {
                             // only rotate-normalize to tetrahedrons with 1 attached face; every polytet is guaranteed to have some
@@ -346,7 +347,7 @@ int main(int argc, char *argv[])
                                 Coord y0 = ( n[1][0]*n[2][1]*n[0][2] + n[1][0]*n[3][1]*n[0][2] - n[0][0]*n[2][1]*n[1][2] - n[0][0]*n[3][1]*n[1][2] - n[3][0]*((n[1][1] + n[2][1])*n[0][2] + (-n[0][1] + n[2][1])*n[1][2]) - n[1][0]*n[0][1]*n[2][2] + n[0][0]*n[1][1]*n[2][2] + n[3][0]*(n[0][1] + n[1][1])*n[2][2] - n[0][0]*n[3][1]*n[2][2] - n[1][0]*n[3][1]*n[2][2] + (-(n[1][0]*n[0][1]) + n[0][0]*n[1][1] + (n[0][0] + n[1][0])*n[2][1])*n[3][2] + n[2][0]*(n[3][1]*(n[0][2] + n[1][2]) + n[0][1]*(n[1][2] - n[3][2]) - n[1][1]*(n[0][2] + n[3][2])));
                                 Coord z0 = (-n[1][0]*n[2][1]*n[0][2] - n[1][0]*n[3][1]*n[0][2] + n[0][0]*n[2][1]*n[1][2] + n[0][0]*n[3][1]*n[1][2] - n[3][0]*n[2][1]*(n[0][2] + n[1][2]) + n[1][0]*n[0][1]*n[2][2] - n[0][0]*n[1][1]*n[2][2] - n[0][0]*n[3][1]*n[2][2] - n[1][0]*n[3][1]*n[2][2] + n[3][0]*n[1][1]*(n[0][2] + n[2][2]) + n[3][0]*n[0][1]*(-n[1][2] + n[2][2]) + n[1][0]*(n[0][1] + n[2][1])*n[3][2] + n[0][0]*(-n[1][1] + n[2][1])*n[3][2] + n[2][0]*(n[3][1]*(n[0][2] + n[1][2]) + n[1][1]*(n[0][2] - n[3][2]) - n[0][1]*(n[1][2] + n[3][2])));
                                 // Add this rotation of this polytet
-                                Polytet &newRotatedPolytet = rotationsOfThisPolytet.emplace_back();
+                                Polytet newRotatedPolytet;
                                 for (auto tetToRotate=newPolytet.cbegin(); tetToRotate!=newPolytet.cend(); ++tetToRotate)
                                 {
                                     Tet &nt = newRotatedPolytet.emplace_back();
@@ -358,22 +359,21 @@ int main(int argc, char *argv[])
                                     }
                                     memcpy(nt.faceAttached, tetToRotate->faceAttached, sizeof(nt.faceAttached));
                                 }
+
+                                if (!haveRunningLeast ||
+                                    runningLeastPolytet > newRotatedPolytet)
+                                {
+                                    haveRunningLeast = true;
+                                    runningLeastPolytet = newRotatedPolytet;
+                                }
+
                                 Coord3 tmpFace = n[2];
                                 n[2] = n[1];
                                 n[1] = n[0];
                                 n[0] = tmpFace;
                             }
                         }
-                        // choose the "least" of these rotations, so it can later be compared for equality by others of its kind
-                        auto polytetToCompare = rotationsOfThisPolytet.cbegin();
-                        const Polytet *polytetToAdd = &*polytetToCompare;
-                        while (polytetToCompare != rotationsOfThisPolytet.cend())
-                        {
-                            ++polytetToCompare;
-                            if (*polytetToAdd >  *polytetToCompare)
-                                 polytetToAdd = &*polytetToCompare;
-                        }
-                        newPolytets->insert(*polytetToAdd);
+                        newPolytets->insert(runningLeastPolytet);
                     }
                 discardThisNewPolytet:;
                 }
