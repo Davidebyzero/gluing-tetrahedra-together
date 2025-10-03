@@ -7,6 +7,7 @@
 #include <vector>
 #include <list>
 #include <functional>
+#include <unordered_set>
 
 //#define DEBUG_PRINT
 //#define DEBUG_PRINT2
@@ -203,6 +204,31 @@ bool operator==(const Polytet &_a, const Polytet &_b)
     return true;
 }
 
+namespace std
+{
+    template<>
+    struct hash<Polytet>
+    {
+        std::size_t operator()(const Polytet &_polytet) const noexcept
+        {
+            Polytet polytet(_polytet);
+            std::sort(begin(polytet), end(polytet));
+            std::size_t seed = polytet.size();
+            for (auto tet=polytet.cbegin(); tet!=polytet.cend(); ++tet)
+            {
+                NormalizedTetrahedron t(tet->t);
+                for (auto c=t.cbegin(); c!=t.cend(); ++c)
+                    for (auto i=c->cbegin(); i!=c->cend(); ++i)
+                    {
+                        seed ^= std::hash<uint64_t>{}((uint64_t)(*i      )) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+                        seed ^= std::hash<uint64_t>{}((uint64_t)(*i >> 64)) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+                    }
+            }
+            return seed;
+        }
+    };
+};
+
 int main(int argc, char *argv[])
 {
     static const Tetrahedron start =
@@ -212,9 +238,12 @@ int main(int argc, char *argv[])
         {{ 1,-1, 1}},
         {{ 1, 1,-1}}
     }};
+    Polytet startPolytet;
+    startPolytet.emplace_back(start);
+
     Coord power3 = 1;
-    auto *polytets = new std::list<Polytet>;
-    polytets->emplace_back().emplace_back(start);
+    auto *polytets = new std::unordered_set<Polytet>;
+    polytets->insert(startPolytet);
     for (int outer=1;;)
     {
         printf("%d: %d\n", outer, polytets->size());
@@ -222,7 +251,7 @@ int main(int argc, char *argv[])
         /*if (outer > 6)
             break;*/
         power3 *= 3;
-        auto *newPolytets = new std::list<Polytet>;
+        auto *newPolytets = new std::unordered_set<Polytet>;
         for (auto basePolytet=polytets->cbegin(); basePolytet!=polytets->cend(); ++basePolytet)
         {
             for (auto tetToAttachTo=basePolytet->cbegin(); tetToAttachTo!=basePolytet->cend(); ++tetToAttachTo)
@@ -384,7 +413,7 @@ int main(int argc, char *argv[])
                             if (*polytetToAdd >  *polytetToCompare)
                                  polytetToAdd = &*polytetToCompare;
                         }
-                        newPolytets->emplace_back(*polytetToAdd);
+                        newPolytets->insert(*polytetToAdd);
 #ifdef DEBUG_PRINT
                         printf("======\n");
 #endif
@@ -394,8 +423,6 @@ int main(int argc, char *argv[])
             }
         }
         
-        newPolytets->sort();
-        newPolytets->unique();
 #ifdef DEBUG_PRINT2
         for (auto thisPolytet=newPolytets->cbegin(); thisPolytet!=newPolytets->cend(); ++thisPolytet)
         {
