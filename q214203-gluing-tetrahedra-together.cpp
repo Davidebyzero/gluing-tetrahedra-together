@@ -245,8 +245,10 @@ int main(int argc, char *argv[])
         auto currentTime = std::chrono::steady_clock::now();
         std::cout << tetCount << ": " << polytets->size() << " [" << std::chrono::duration_cast<std::chrono::milliseconds>(currentTime - startTime).count() << " ms]" << std::endl;
         ++tetCount;
-        /*if (tetCount > 6)
-            break;*/
+#ifdef DEBUG_PRINT
+        if (tetCount > 6)
+            break;
+#endif
         power3 *= 3;
         auto *newPolytets = new std::unordered_set<Polytet>;
         for (auto basePolytet=polytets->cbegin(); basePolytet!=polytets->cend(); ++basePolytet)
