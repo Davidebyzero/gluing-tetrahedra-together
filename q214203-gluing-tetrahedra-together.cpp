@@ -378,15 +378,18 @@ int main(int argc, char *argv[])
 #ifdef DEBUG_PRINT
         for (auto thisPolytet=newPolytets->cbegin(); thisPolytet!=newPolytets->cend(); ++thisPolytet)
         {
+            bool first = true;
             for (auto thisTet=thisPolytet->cbegin(); thisTet!=thisPolytet->cend(); ++thisTet)
             {
-                printf("[%" PRId64 ", %" PRId64 ", %" PRId64 "], [%" PRId64 ", %" PRId64 ", %" PRId64 "], [%" PRId64 ", %" PRId64 ", %" PRId64 "], [%" PRId64 ", %" PRId64 ", %" PRId64 "]\n",
-                    thisTet->t[0][0], thisTet->t[0][1], thisTet->t[0][2],
-                    thisTet->t[1][0], thisTet->t[1][1], thisTet->t[1][2],
-                    thisTet->t[2][0], thisTet->t[2][1], thisTet->t[2][2],
-                    thisTet->t[3][0], thisTet->t[3][1], thisTet->t[3][2]);
+                printf(first ? "\n{" : ",\n");
+                first = false;
+                printf("{{%" PRId64 ", %" PRId64 ", %" PRId64 "}, {%" PRId64 ", %" PRId64 ", %" PRId64 "}, {%" PRId64 ", %" PRId64 ", %" PRId64 "}, {%" PRId64 ", %" PRId64 ", %" PRId64 "}}",
+                    (int64_t)thisTet->t[0][0], (int64_t)thisTet->t[0][1], (int64_t)thisTet->t[0][2],
+                    (int64_t)thisTet->t[1][0], (int64_t)thisTet->t[1][1], (int64_t)thisTet->t[1][2],
+                    (int64_t)thisTet->t[2][0], (int64_t)thisTet->t[2][1], (int64_t)thisTet->t[2][2],
+                    (int64_t)thisTet->t[3][0], (int64_t)thisTet->t[3][1], (int64_t)thisTet->t[3][2]);
             }
-            printf("---\n");
+            printf("}\n");
         }
 #endif
         
