@@ -145,7 +145,7 @@ int main(int argc, char *argv[])
     for (int outer=1;;)
     {
         printf("%d: %d\n", outer, polytets->size());
-        if (++outer > 5)
+        if (++outer > 6)
             break;
         power3 *= 3;
         auto *newPolytets = new std::list<Polytet>;
@@ -200,15 +200,9 @@ int main(int argc, char *argv[])
                         {
                             int p0 = p  ^ (p  <  2           ? 1 : 0); // swap first two vertices to preserve chirality
                             int p1 = p0 + (p0 >= 3 - faceNum ? 1 : 0); // skip the opposite vertex
-#ifdef DEBUG_PRINT
-                            printf("%d, ", p1);
-#endif
                             for (int d=0; d<3; d++)
                                 t.t[p][d] = tetToAttachTo->t[p1][d] * 3;
                         }
-#ifdef DEBUG_PRINT
-                        printf("%d\n", 3 - faceNum);
-#endif
                         t.t[3] = newVertex;
                         t.faceAttached[0] = true;
                         t.faceAttached[1] = false;
