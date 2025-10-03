@@ -235,6 +235,7 @@ namespace std
     };
 };
 
+#ifdef USE_GMP
 void mpz_set_int128(mpz_t &dst, const __int128 &src)
 {
     __int128 abssrc = src < 0 ? -src : src;
@@ -257,6 +258,7 @@ void mpz_get_int128(__int128 &dst, const mpz_t &src)
     if (mpz_sgn(src) < 0)
         dst = -dst;
 }
+#endif
 
 int main(int argc, char *argv[])
 {
