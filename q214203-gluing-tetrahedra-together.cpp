@@ -198,8 +198,10 @@ int main(int argc, char *argv[])
                         Tet &t = newPolytet.emplace_back();
                         for (int p=0; p<3; p++)
                         {
-                            int p0 = p  ^ (p  <  2           ? 1 : 0); // swap first two vertices to preserve chirality
-                            int p1 = p0 + (p0 >= 3 - faceNum ? 1 : 0); // skip the opposite vertex
+                            int p0 = p;
+                            if (!(faceNum & 1))
+                                p0 ^=      (p  <  2           ? 1 : 0); // swap first two vertices to preserve chirality
+                            int p1  = p0 + (p0 >= 3 - faceNum ? 1 : 0); // skip the opposite vertex
                             for (int d=0; d<3; d++)
                                 t.t[p][d] = tetToAttachTo->t[p1][d] * 3;
                         }
@@ -231,8 +233,8 @@ int main(int argc, char *argv[])
                             static int transformFaces[4][4] =
                             {
                                 {0, 1, 2, 3},
-                                {0, 2, 3, 1},
                                 {0, 3, 1, 2},
+                                {0, 2, 3, 1},
                                 {1, 3, 2, 0},
                             };
                             for (int faceToRotateNormalize=0; faceToRotateNormalize<4; faceToRotateNormalize++)
