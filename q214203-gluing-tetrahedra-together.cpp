@@ -398,7 +398,7 @@ int main(int argc, char *argv[])
                         // Check for overlap between this newly attached tetrahedron and the existing ones
                         for (auto tetCheckIntersection=newPolytet.cbegin(); tetCheckIntersection!=newPolytet.cend(); ++tetCheckIntersection)
                         {
-                            if (&*tetCheckIntersection == tetCopyToAttachTo)
+                            if (&*tetCheckIntersection == tetCopyToAttachTo || &*tetCheckIntersection == &t)
                                 continue; // skip this check for speed (it'll always be false anyway)
                             if (volumesOverlap(t.t, tetCheckIntersection->t))
                                 goto discardThisNewPolytet;
