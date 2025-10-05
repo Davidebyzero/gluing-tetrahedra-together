@@ -11,7 +11,7 @@
 #include <unordered_set>
 #include <chrono>
 
-#define USE_GMP
+//#define USE_GMP
 //#define DEBUG_PRINT
 
 #ifdef USE_GMP
@@ -23,7 +23,8 @@
 
 auto startTime = std::chrono::steady_clock::now();
 
-typedef __int128 Coord;
+//typedef __int128 Coord;
+typedef int64_t Coord;
 typedef std::array<Coord, 3> Coord3;
 typedef std::array<Coord3, 4> Tetrahedron;
 class Tet
@@ -106,31 +107,87 @@ Coord dot(const Coord3 &a, const Coord3 &b)
 {
     return a[0]*b[0] + a[1]*b[1] + a[2]*b[2];
 }
-bool volumesOverlap(const Tetrahedron &a, const Tetrahedron &b)
+
+typedef __int128 _Coord;
+typedef std::array<_Coord, 3> _Coord3;
+_Coord3 operator-(const _Coord3 &a)
 {
+    _Coord3 c;
+    c[0] = -a[0];
+    c[1] = -a[1];
+    c[2] = -a[2];
+    return c;
+}
+_Coord3 operator+(const _Coord3 &a, const _Coord3 &b)
+{
+    _Coord3 c;
+    c[0] = a[0] + b[0];
+    c[1] = a[1] + b[1];
+    c[2] = a[2] + b[2];
+    return c;
+}
+_Coord3 operator-(const _Coord3 &a, const _Coord3 &b)
+{
+    _Coord3 c;
+    c[0] = a[0] - b[0];
+    c[1] = a[1] - b[1];
+    c[2] = a[2] - b[2];
+    return c;
+}
+_Coord3 operator*(const _Coord3 &a, const _Coord b)
+{
+    _Coord3 c;
+    c[0] = a[0] * b;
+    c[1] = a[1] * b;
+    c[2] = a[2] * b;
+    return c;
+}
+_Coord3 cross(const _Coord3 a, const _Coord3 b)
+{
+    _Coord3 c;
+    c[0] = a[1]*b[2] - a[2]*b[1];
+    c[1] = a[2]*b[0] - a[0]*b[2];
+    c[2] = a[0]*b[1] - a[1]*b[0];
+    return c;
+}
+_Coord dot(const _Coord3 &a, const _Coord3 &b)
+{
+    return a[0]*b[0] + a[1]*b[1] + a[2]*b[2];
+}
+
+bool volumesOverlap(const Tetrahedron &_a, const Tetrahedron &_b)
+{
+    std::array<_Coord3, 4> a, b;
+    for (int p=0; p<4; p++)
+        for (int d=0; d<3; d++)
+        {
+            a[p][d] = _a[p][d];
+            b[p][d] = _b[p][d];
+        }
+            
     // Take advantage of the fact that the two tetrahedrons are regular and congruent, and
     // just check if any edge of tetrahedron "a" intersects with any face of tetrahedron "b".
     // Don't count it if only the endpoint of an edge intersects.
     for (int edgeNum=0; edgeNum<6; edgeNum++)
     {
-        Coord3 p0 = a[tetrahedronEdges[edgeNum][0]];
-        Coord3 p1 = a[tetrahedronEdges[edgeNum][1]];
+        _Coord3 p0 = a[tetrahedronEdges[edgeNum][0]];
+        _Coord3 p1 = a[tetrahedronEdges[edgeNum][1]];
         for (int faceNum=0; faceNum<4; faceNum++)
         {
-            Tetrahedron normalizedTetrahedron; // first 3 points are the face, and the 4th point is for calculating the normal
+            std::array<_Coord3, 4> normalizedTetrahedron; // first 3 points are the face, and the 4th point is for calculating the normal
             for (int i=0; i<4; i++)
                 normalizedTetrahedron[i] = b[tetrahedronFaces[faceNum][i]];
-            Coord3 center = {{0, 0, 0}}; // multiplied by 3 compared to original coordinates
+            _Coord3 center = {{0, 0, 0}}; // multiplied by 3 compared to original coordinates
             // Get center of face by averaging its vertices' coordinates; the
             // division by 3 is implied by omitting the multiplication by 3.
             for (int p=0; p<3; p++)
                 for (int d=0; d<3; d++)
                     center[d] += normalizedTetrahedron[p][d];
-            Coord3 normal;
+            _Coord3 normal;
             for (int d=0; d<3; d++)
                 normal[d] = normalizedTetrahedron[3][d] * 3 - center[d];
-            Coord intersectNumerator   = dot(normal, normalizedTetrahedron[0] - p0);
-            Coord intersectDenominator = dot(normal,                       p1 - p0);
+            _Coord intersectNumerator   = dot(normal, (_Coord3)(normalizedTetrahedron[0] - p0));
+            _Coord intersectDenominator = dot(normal, (_Coord3)(                      p1 - p0));
             if (intersectDenominator == 0)
                 continue; // edge is parallel to face, which we don't count as an overlap
             if (intersectDenominator < 0)
@@ -141,17 +198,17 @@ bool volumesOverlap(const Tetrahedron &a, const Tetrahedron &b)
             if (intersectNumerator <= 0 || intersectNumerator >= intersectDenominator)
                 continue;
             // These coordinates are all multiplied by intersectDenominator
-            Coord3 intersectionPoint = p0 * intersectDenominator + (p1 - p0) * intersectNumerator;
-            Coord3 triangle[3];
+            _Coord3 intersectionPoint = p0 * intersectDenominator + (p1 - p0) * intersectNumerator;
+            _Coord3 triangle[3];
             for (int i=0; i<3; i++)
                 triangle[i] = normalizedTetrahedron[i] * intersectDenominator;
             // Check if the intersection point is inside the triangle
-            Coord3 d = intersectionPoint - triangle[0];
-            Coord3 edge1 = triangle[1] - triangle[0];
-            Coord3 edge2 = triangle[2] - triangle[0];
-            Coord uNumerator = d[1]*edge2[0] - d[0]*edge2[1];
-            Coord vNumerator = d[0]*edge1[1] - d[1]*edge1[0];
-            Coord uvDenominator = edge1[1]*edge2[0] - edge1[0]*edge2[1];
+            _Coord3 d = intersectionPoint - triangle[0];
+            _Coord3 edge1 = triangle[1] - triangle[0];
+            _Coord3 edge2 = triangle[2] - triangle[0];
+            _Coord uNumerator = d[1]*edge2[0] - d[0]*edge2[1];
+            _Coord vNumerator = d[0]*edge1[1] - d[1]*edge1[0];
+            _Coord uvDenominator = edge1[1]*edge2[0] - edge1[0]*edge2[1];
             if (uvDenominator == 0)
                 continue;
             if (uvDenominator < 0)
@@ -276,8 +333,12 @@ namespace std
                 {
                     for (auto i=c->cbegin(); i!=c->cend(); ++i)
                     {
+#if 0
                         seed ^= std::hash<uint64_t>{}((uint64_t)(*i      )) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
                         seed ^= std::hash<uint64_t>{}((uint64_t)(*i >> 64)) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+#else
+                        seed ^= std::hash<uint64_t>{}(*i) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+#endif
                     }
                 }
             }
