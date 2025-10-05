@@ -44,10 +44,10 @@ typedef std::vector<Tet> Polytet;
 // vertex indices of faces with identical chirality
 static int tetrahedronFaces[4][4] =
 {
-    {0, 1, 2, 3},
-    {0, 3, 1, 2},
-    {0, 2, 3, 1},
-    {1, 3, 2, 0},
+    {0, 2, 1, 3},
+    {0, 1, 3, 2},
+    {0, 3, 2, 1},
+    {1, 2, 3, 0},
 };
 
 Coord3 operator-(const Coord3 &a)
@@ -183,10 +183,7 @@ void attachNewTet(Tet &t, const Tet &tetToAttachTo, const int faceNum)
     // Add new tetrahedron
     for (int p=0; p<3; p++)
     {
-        int p0 = p;
-        if (!(faceNum & 1))
-            p0 ^=      (p  <  2           ? 1 : 0); // swap first two vertices to preserve chirality
-        int p1  = p0 + (p0 >= 3 - faceNum ? 1 : 0); // skip the opposite vertex
+        int p1 = tetrahedronFaces[faceNum][p];
         for (int d=0; d<3; d++)
             t.t[p][d] = tetToAttachTo.t[p1][d] * 3;
     }
