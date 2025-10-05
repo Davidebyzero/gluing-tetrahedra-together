@@ -106,68 +106,77 @@ Coord dot(const Coord3 &a, const Coord3 &b)
 {
     return a[0]*b[0] + a[1]*b[1] + a[2]*b[2];
 }
-bool volumesOverlap(const Tetrahedron &a, const Tetrahedron &b)
+
+class TetrahedronOverlap
 {
-    // Take advantage of the fact that the two tetrahedrons are regular and congruent, and
-    // just check if any edge of tetrahedron "a" intersects with any face of tetrahedron "b".
-    // Don't count it if only the endpoint of an edge intersects.
-    for (int edgeNum=0; edgeNum<6; edgeNum++)
+    const Tetrahedron *a, *b;
+public:
+    void setA(const Tetrahedron &x) {a = &x;}
+    void setB(const Tetrahedron &x) {b = &x;}
+    bool operator()()
     {
-        Coord3 p0 = a[tetrahedronEdges[edgeNum][0]];
-        Coord3 p1 = a[tetrahedronEdges[edgeNum][1]];
-        for (int faceNum=0; faceNum<4; faceNum++)
+        // Take advantage of the fact that the two tetrahedrons are regular and congruent, and
+        // just check if any edge of tetrahedron "a" intersects with any face of tetrahedron "b".
+        // Don't count it if only the endpoint of an edge intersects.
+        for (int edgeNum=0; edgeNum<6; edgeNum++)
         {
-            Tetrahedron normalizedTetrahedron; // first 3 points are the face, and the 4th point is for calculating the normal
-            for (int i=0; i<4; i++)
-                normalizedTetrahedron[i] = b[tetrahedronFaces[faceNum][i]];
-            Coord3 center = {{0, 0, 0}}; // multiplied by 3 compared to original coordinates
-            // Get center of face by averaging its vertices' coordinates; the
-            // division by 3 is implied by omitting the multiplication by 3.
-            for (int p=0; p<3; p++)
+            Coord3 p0 = (*a)[tetrahedronEdges[edgeNum][0]];
+            Coord3 p1 = (*a)[tetrahedronEdges[edgeNum][1]];
+            for (int faceNum=0; faceNum<4; faceNum++)
+            {
+                Tetrahedron normalizedTetrahedron; // first 3 points are the face, and the 4th point is for calculating the normal
+                for (int i=0; i<4; i++)
+                    normalizedTetrahedron[i] = (*b)[tetrahedronFaces[faceNum][i]];
+                Coord3 center = {{0, 0, 0}}; // multiplied by 3 compared to original coordinates
+                // Get center of face by averaging its vertices' coordinates; the
+                // division by 3 is implied by omitting the multiplication by 3.
+                for (int p=0; p<3; p++)
+                    for (int d=0; d<3; d++)
+                        center[d] += normalizedTetrahedron[p][d];
+                Coord3 normal;
                 for (int d=0; d<3; d++)
-                    center[d] += normalizedTetrahedron[p][d];
-            Coord3 normal;
-            for (int d=0; d<3; d++)
-                normal[d] = normalizedTetrahedron[3][d] * 3 - center[d];
-            Coord intersectNumerator   = dot(normal, normalizedTetrahedron[0] - p0);
-            Coord intersectDenominator = dot(normal,                       p1 - p0);
-            if (intersectDenominator == 0)
-                continue; // edge is parallel to face, which we don't count as an overlap
-            if (intersectDenominator < 0)
-            {
-                intersectNumerator   = -intersectNumerator;
-                intersectDenominator = -intersectDenominator;
+                    normal[d] = normalizedTetrahedron[3][d] * 3 - center[d];
+                Coord intersectNumerator   = dot(normal, normalizedTetrahedron[0] - p0);
+                Coord intersectDenominator = dot(normal,                       p1 - p0);
+                if (intersectDenominator == 0)
+                    continue; // edge is parallel to face, which we don't count as an overlap
+                if (intersectDenominator < 0)
+                {
+                    intersectNumerator   = -intersectNumerator;
+                    intersectDenominator = -intersectDenominator;
+                }
+                if (intersectNumerator <= 0 || intersectNumerator >= intersectDenominator)
+                    continue;
+                // These coordinates are all multiplied by intersectDenominator
+                Coord3 intersectionPoint = p0 * intersectDenominator + (p1 - p0) * intersectNumerator;
+                Coord3 triangle[3];
+                for (int i=0; i<3; i++)
+                    triangle[i] = normalizedTetrahedron[i] * intersectDenominator;
+                // Check if the intersection point is inside the triangle
+                Coord3 d = intersectionPoint - triangle[0];
+                Coord3 edge1 = triangle[1] - triangle[0];
+                Coord3 edge2 = triangle[2] - triangle[0];
+                Coord uNumerator = d[1]*edge2[0] - d[0]*edge2[1];
+                Coord vNumerator = d[0]*edge1[1] - d[1]*edge1[0];
+                Coord uvDenominator = edge1[1]*edge2[0] - edge1[0]*edge2[1];
+                if (uvDenominator == 0)
+                    continue;
+                if (uvDenominator < 0)
+                {
+                    uNumerator = -uNumerator;
+                    vNumerator = -vNumerator;
+                    uvDenominator = -uvDenominator;
+                }
+                if (uNumerator <= 0 || vNumerator <= 0)
+                    continue;
+                if (uNumerator + vNumerator < uvDenominator)
+                    return true;
             }
-            if (intersectNumerator <= 0 || intersectNumerator >= intersectDenominator)
-                continue;
-            // These coordinates are all multiplied by intersectDenominator
-            Coord3 intersectionPoint = p0 * intersectDenominator + (p1 - p0) * intersectNumerator;
-            Coord3 triangle[3];
-            for (int i=0; i<3; i++)
-                triangle[i] = normalizedTetrahedron[i] * intersectDenominator;
-            // Check if the intersection point is inside the triangle
-            Coord3 d = intersectionPoint - triangle[0];
-            Coord3 edge1 = triangle[1] - triangle[0];
-            Coord3 edge2 = triangle[2] - triangle[0];
-            Coord uNumerator = d[1]*edge2[0] - d[0]*edge2[1];
-            Coord vNumerator = d[0]*edge1[1] - d[1]*edge1[0];
-            Coord uvDenominator = edge1[1]*edge2[0] - edge1[0]*edge2[1];
-            if (uvDenominator == 0)
-                continue;
-            if (uvDenominator < 0)
-            {
-                uNumerator = -uNumerator;
-                vNumerator = -vNumerator;
-                uvDenominator = -uvDenominator;
-            }
-            if (uNumerator <= 0 || vNumerator <= 0)
-                continue;
-            if (uNumerator + vNumerator < uvDenominator)
-                return true;
         }
+        return false;
     }
-    return false;
-}
+};
+
 void attachNewTet(Tet &t, const Tet &tetToAttachTo, const int faceNum)
 {
     Coord3 &newVertex = t.t[3];
@@ -358,6 +367,7 @@ int main(int argc, char *argv[])
         zy_numerator_mpz, zy_denominator_mpz,
         zz_numerator_mpz, zz_denominator_mpz, NULL);
 #endif
+    TetrahedronOverlap overlap;
     Coord power3   = 1;
     Coord power9_2 = 2;
     auto *polytets = new std::unordered_set<Polytet>;
@@ -413,11 +423,13 @@ int main(int argc, char *argv[])
                         Tet &t = newPolytet.emplace_back();
                         attachNewTet(t, *tetToAttachTo, faceNum);
                         // Check for overlap between this newly attached tetrahedron and the existing ones
+                        overlap.setA(t.t);
                         for (auto tetCheckIntersection=newPolytet.cbegin(); tetCheckIntersection!=newPolytet.cend(); ++tetCheckIntersection)
                         {
                             if (&*tetCheckIntersection == tetCopyToAttachTo || &*tetCheckIntersection == &t)
                                 continue; // skip this check for speed (it'll always be false anyway)
-                            if (volumesOverlap(t.t, tetCheckIntersection->t))
+                            overlap.setB(tetCheckIntersection->t);
+                            if (overlap())
                                 goto discardThisNewPolytet;
                         }
                         // Canonicalize the rotation of this new polytet, so that it can be compared against others
