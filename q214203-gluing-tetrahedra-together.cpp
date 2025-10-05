@@ -11,7 +11,7 @@
 #include <unordered_set>
 #include <chrono>
 
-#define USE_GMP
+//#define USE_GMP
 //#define DEBUG_PRINT
 
 #ifdef USE_GMP
@@ -28,14 +28,14 @@ class Tet
 {
     void initFaces()
     {
-        faceAttached[0] = false; // t[0],t[1],t[2]
-        faceAttached[1] = false; // t[0],t[1],t[3]
-        faceAttached[2] = false; // t[0],t[2],t[3]
-        faceAttached[3] = false; // t[1],t[2],t[3]
+        faceAttached[0] = NULL; // t[0],t[1],t[2]
+        faceAttached[1] = NULL; // t[0],t[1],t[3]
+        faceAttached[2] = NULL; // t[0],t[2],t[3]
+        faceAttached[3] = NULL; // t[1],t[2],t[3]
     }
 public:
     Tetrahedron t;
-    bool faceAttached[4];
+    Tet *faceAttached[4];
     Tet(                    ) : t( ) {initFaces();}
     Tet(const Tetrahedron &t) : t(t) {initFaces();}
 };
@@ -44,10 +44,10 @@ typedef std::vector<Tet> Polytet;
 // vertex indices of faces with identical chirality
 static int tetrahedronFaces[4][4] =
 {
-    {0, 2, 1, 3},
-    {0, 1, 3, 2},
-    {0, 3, 2, 1},
-    {1, 2, 3, 0},
+    {0, 1, 2, 3}, // 3,0,2,1   0->3, 1->1, 2->0, 3->2
+    {0, 3, 1, 2}, // 2,0,1,3   0->0, 1->3, 2->1, 3->2
+    {0, 2, 3, 1}, // 1,0,3,2   0->1, 1->0, 2->3, 3->2
+    {1, 3, 2, 0}, // 0,1,2,3   0->0, 1->1, 2->2, 3->3
 };
 
 Coord3 operator-(const Coord3 &a)
@@ -165,12 +165,11 @@ bool volumesOverlap(const Tetrahedron &a, const Tetrahedron &b)
     }
     return false;
 }
-void attachNewTet(Tet &t, const Tet &tetToAttachTo, const int faceNum)
+void attachNewTet(Tet &t, Tet &tetToAttachTo, const int faceNum)
 {
-    Coord3 &newVertex = t.t[3];
+    Coord3 &newVertex = t.t[0];
     newVertex = {{0, 0, 0}};
-    // Get center of face by averaging its vertices' coordinates; the
-    // division by 3 is implied by omitting the multiplication by 3.
+    // Get center of face by averaging its vertices' coordinates.
     for (int p=0; p<4; p++)
     {
         if (p == 3 - faceNum)
@@ -180,18 +179,19 @@ void attachNewTet(Tet &t, const Tet &tetToAttachTo, const int faceNum)
     }
     // Finalize the new vertex
     for (int d=0; d<3; d++)
-        newVertex[d] += newVertex[d] - tetToAttachTo.t[3 - faceNum][d] * 3;
+        newVertex[d] = newVertex[d]/3 * 2 - tetToAttachTo.t[3 - faceNum][d];
     // Copy the other vertices
     for (int p=0; p<3; p++)
     {
         int p1 = tetrahedronFaces[faceNum][p];
         for (int d=0; d<3; d++)
-            t.t[p][d] = tetToAttachTo.t[p1][d] * 3;
+            t.t[1+p][d] = tetToAttachTo.t[p1][d];
     }
-    t.faceAttached[0] = true;
-    t.faceAttached[1] = false;
-    t.faceAttached[2] = false;
-    t.faceAttached[3] = false;
+    t.faceAttached[0] = NULL;
+    t.faceAttached[1] = NULL;
+    t.faceAttached[2] = NULL;
+    t.faceAttached[3] = &tetToAttachTo;
+    tetToAttachTo.faceAttached[faceNum] = &t;
 }
 
 class NormalizedPolytet : public std::vector<Tetrahedron>
@@ -238,6 +238,46 @@ bool operator==(const Polytet &_a, const Polytet &_b)
     return true;
 }
 
+// First two tetrahedrons are implied. Each element is a subsequent tetrahedron, with the value indicating where
+// it's attached. The lower 2 bits indicate which face (can only have 3 different values, because at least 1 face
+// will always already be attached). The remaining bits indicate which tetrahedron (which can never be zero,
+// because that one is attached implicitly).
+class CompressedPolytet : public std::vector<uint32_t>
+{
+public:
+    void append(const Polytet &polytet, const Tet &tetToCompress, int vertexMap[4])
+    {
+        int faceMap[4];
+        for (int faceNum=0; faceNum<4; faceNum++)
+            faceMap[3 - vertexMap[3 - faceNum]] = faceNum;
+        for (int _faceNum=0; _faceNum<3; _faceNum++)
+        {
+            int faceNum = faceMap[_faceNum];
+            if (!tetToCompress.faceAttached[faceNum])
+                continue;
+            Tet *attachedTet = tetToCompress.faceAttached[faceNum];
+            push_back((((size_t)(attachedTet - polytet.data())) << 2) + faceNum);
+            
+            int attachedFace = 0;
+            while (attachedTet->faceAttached[attachedFace] != &tetToCompress)
+                attachedFace++;
+            int vertexMap2[4];
+            int rotation = vertexMap[tetrahedronFaces[faceNum][0]];
+            if (rotation > 3 - _faceNum)
+                rotation--;
+            for (int p=0; p<4; p++)
+            {
+                int p2 = p==3 ? 0 : ((p + rotation) % 2) + 1;
+                if (attachedFace == 3)
+                    vertexMap2[(p + 1) % 3] = p2;
+                else
+                    vertexMap2[tetrahedronFaces[attachedFace][p]] = p2;
+            }
+            append(polytet, *attachedTet, vertexMap2);
+        }
+    }
+};
+
 namespace std
 {
     template<>
@@ -258,6 +298,17 @@ namespace std
                     }
                 }
             }
+            return seed;
+        }
+    };
+    template<>
+    struct hash<CompressedPolytet>
+    {
+        std::size_t operator()(const CompressedPolytet &polytet) const noexcept
+        {
+            std::size_t seed = polytet.size();
+            for (auto i=polytet.cbegin(); i!=polytet.cend(); ++i)
+                seed ^= std::hash<uint32_t>{}(*i) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
             return seed;
         }
     };
@@ -292,6 +343,135 @@ int main(int argc, char *argv[])
 {
     auto startTime = std::chrono::steady_clock::now();
 
+#if 1 // main
+    static Tetrahedron start =
+    {{
+        {{-9,-9,-9}},
+        {{-9, 9, 9}},
+        {{ 9,-9, 9}},
+        {{ 9, 9,-9}}
+    }};
+
+    auto *polytets = new std::unordered_set<CompressedPolytet>;
+    polytets->insert(CompressedPolytet()); // add empty vector as the starter polytet (meaning it has two tetrahedrons)
+    size_t prevPolytetCount = 0;
+
+    for (int tetCount=1;;)
+    {
+        auto currentTime = std::chrono::steady_clock::now();
+        size_t polytetCount = polytets->size();
+        std::cout << tetCount << ": " << polytetCount << " [" << std::chrono::duration_cast<std::chrono::milliseconds>(currentTime - startTime).count() << " ms]" << std::endl;
+        if (prevPolytetCount > polytetCount)
+        {
+            std::cerr << "Quit due to apparent overflow" << std::endl;
+            break;
+        }
+        prevPolytetCount = polytetCount;
+        if (++tetCount <= 2)
+            continue;
+
+        Polytet polytet;
+        polytet.reserve(2);
+        Tet &t0    = polytet.emplace_back(start);
+        attachNewTet(polytet.emplace_back(), t0, 3);
+
+        auto *newPolytets = new std::unordered_set<CompressedPolytet>;
+        polytet.resize(tetCount);
+        for (auto basePolytet=polytets->cbegin(); basePolytet!=polytets->cend(); ++basePolytet)
+        {
+            int tetNumToUncompress = 2;
+            for (auto elementToUncompress=basePolytet->cbegin(); elementToUncompress!=basePolytet->cend(); ++elementToUncompress)
+            {
+                int faceNum          = *elementToUncompress & 3;
+                int tetNumToAttachTo = *elementToUncompress >> 2;
+                Tet &tetToAttachTo = polytet[tetNumToAttachTo];
+                attachNewTet(polytet[tetNumToUncompress++], tetToAttachTo, faceNum);
+            }
+
+            Tet &newTet = polytet[tetCount - 1];
+            for (int tetNumToAttachTo = 1; tetNumToAttachTo < tetCount-1; tetNumToAttachTo++)
+            {
+                Tet &tetToAttachTo = polytet[tetNumToAttachTo];
+                for (int faceNum=0; faceNum<3; faceNum++) // skip last face because it's always already attached
+                {
+                    if (tetToAttachTo.faceAttached[faceNum])
+                        continue;
+                    attachNewTet(newTet, tetToAttachTo, faceNum);
+                    // Check for overlap between this newly attached tetrahedron and the existing ones
+                    for (auto tetCheckIntersection=polytet.cbegin(); tetCheckIntersection!=polytet.cend(); ++tetCheckIntersection)
+                    {
+                        if (&*tetCheckIntersection == &tetToAttachTo || &*tetCheckIntersection == &newTet)
+                            continue; // skip this check for speed (it'll always be false anyway)
+                        if (volumesOverlap(newTet.t, tetCheckIntersection->t))
+                            goto discardThisNewPolytet;
+                    }
+                    // Canonicalize the rotation of this new polytet in compressed form, so that it can be compared against others
+                    {
+                        bool haveRunningLeast = false;
+                        CompressedPolytet runningLeastPolytet;
+
+                        int vertexMap[4] = {0, 1, 2, 3};
+                        Tet *t = &polytet[1];
+                        for (int i=1; i<tetCount; i++)
+                        {
+                            if (i > 1)
+                            {
+                                Tet &singleAttachedTet = polytet[i];
+                                for (int j=0; j<3; j++)
+                                    if (singleAttachedTet.faceAttached[j])
+                                        goto skipThisTet; // not a singly attached tet
+                                t = singleAttachedTet.faceAttached[3];
+                                int attachedFace = 0;
+                                while (t->faceAttached[attachedFace] != &singleAttachedTet)
+                                    attachedFace++;
+                                static int vertexMapTable[3][4] =
+                                {
+                                    {3, 0, 2, 1},
+                                    {2, 0, 1, 3},
+                                    {1, 0, 3, 2},
+                                };
+                                memcpy(vertexMap, vertexMapTable[attachedFace], sizeof(vertexMap));
+                            }
+                            for (int rotationStep=0; rotationStep<3; rotationStep++)
+                            {
+                                CompressedPolytet newRotatedPolytet;
+                                newRotatedPolytet.reserve(tetCount - 2);
+                                newRotatedPolytet.append(polytet, *t, vertexMap);
+                                // Update the running "least" rotation
+                                if (!haveRunningLeast ||
+                                    runningLeastPolytet > newRotatedPolytet)
+                                {
+                                    haveRunningLeast = true;
+                                    runningLeastPolytet = newRotatedPolytet;
+                                }
+                                // Switch to the next rotation
+                                int tmp = vertexMap[3];
+                                vertexMap[3] = vertexMap[2];
+                                vertexMap[2] = vertexMap[1];
+                                vertexMap[1] = tmp;
+                            }
+                        skipThisTet:;
+                        }
+                        newPolytets->insert(runningLeastPolytet);
+                    }
+                discardThisNewPolytet:
+                    tetToAttachTo.faceAttached[faceNum] = NULL;
+                }
+            }
+
+            polytet[1].faceAttached[0] = NULL;
+            polytet[1].faceAttached[1] = NULL;
+            polytet[1].faceAttached[2] = NULL;
+        }
+
+        delete polytets;
+        polytets = newPolytets;
+
+        for (int p=0; p<4; p++)
+            for (int d=0; d<3; d++)
+                start[p][d] *= 3;
+    }
+#else // main
     static const Tetrahedron start =
     {{
         {{-1,-1,-1}},
@@ -548,5 +728,6 @@ int main(int argc, char *argv[])
         zy_numerator_mpz, zy_denominator_mpz,
         zz_numerator_mpz, zz_denominator_mpz, NULL);
 #endif
+#endif // main
 	return 0;
 }
