@@ -50,6 +50,16 @@ static int tetrahedronFaces[4][4] =
     {1, 2, 3, 0},
 };
 
+static int tetrahedronEdges[6][2] =
+{
+    {0, 1},
+    {1, 2},
+    {2, 0},
+    {0, 3},
+    {1, 3},
+    {2, 3},
+};
+
 Coord3 operator-(const Coord3 &a)
 {
     Coord3 c;
@@ -99,19 +109,10 @@ bool volumesOverlap(const Tetrahedron &a, const Tetrahedron &b)
     // Take advantage of the fact that the two tetrahedrons are regular and congruent, and
     // just check if any edge of tetrahedron "a" intersects with any face of tetrahedron "b".
     // Don't count it if only the endpoint of an edge intersects.
-    static int edges[6][2] =
-    {
-        {0, 1},
-        {1, 2},
-        {2, 0},
-        {0, 3},
-        {1, 3},
-        {2, 3},
-    };
     for (int edgeNum=0; edgeNum<6; edgeNum++)
     {
-        Coord3 p0 = a[edges[edgeNum][0]];
-        Coord3 p1 = a[edges[edgeNum][1]];
+        Coord3 p0 = a[tetrahedronEdges[edgeNum][0]];
+        Coord3 p1 = a[tetrahedronEdges[edgeNum][1]];
         for (int faceNum=0; faceNum<4; faceNum++)
         {
             Tetrahedron normalizedTetrahedron; // first 3 points are the face, and the 4th point is for calculating the normal
@@ -238,6 +239,25 @@ bool operator==(const Polytet &_a, const Polytet &_b)
     return true;
 }
 
+void verifyTetrahedron(const Tet &t, Coord power9_2)
+{
+    Coord targetDistSquared = power9_2 * 4;
+    for (int edgeNum=0; edgeNum<6; edgeNum++)
+    {
+        Coord3 p0 = t.t[tetrahedronEdges[edgeNum][0]];
+        Coord3 p1 = t.t[tetrahedronEdges[edgeNum][1]];
+        Coord3 diff = p1 - p0;
+        Coord distSquared = 0;
+        for (int d=0; d<3; d++)
+            distSquared += diff[d] * diff[d];
+        if (distSquared != targetDistSquared)
+        {
+            std::cerr << "Quitting due to detected overflow" << std::endl;
+            exit(-1);
+        }
+    }
+}
+
 namespace std
 {
     template<>
@@ -303,9 +323,9 @@ int main(int argc, char *argv[])
     startPolytet.emplace_back(start);
 
 #ifdef USE_GMP
-    mpz_t power3, power9_2;
-    mpz_init(power3  ); mpz_set_ui(power3  , 1);
-    mpz_init(power9_2); mpz_set_ui(power9_2, 2);
+    mpz_t mpz_power3, mpz_power9_2;
+    mpz_init(mpz_power3  ); mpz_set_ui(mpz_power3  , 1);
+    mpz_init(mpz_power9_2); mpz_set_ui(mpz_power9_2, 2);
     mpz_t
         x , y , z ,
         x0, y0, z0,
@@ -336,10 +356,9 @@ int main(int argc, char *argv[])
         zx_numerator_mpz, zx_denominator_mpz,
         zy_numerator_mpz, zy_denominator_mpz,
         zz_numerator_mpz, zz_denominator_mpz, NULL);
-#else
+#endif
     Coord power3   = 1;
     Coord power9_2 = 2;
-#endif
     auto *polytets = new std::unordered_set<Polytet>;
     polytets->insert(startPolytet);
     size_t prevPolytetCount = 0;
@@ -360,12 +379,11 @@ int main(int argc, char *argv[])
             break;
 #endif
 #ifdef USE_GMP
-        mpz_mul_ui(power3  , power3  , 3);
-        mpz_mul_ui(power9_2, power9_2, 9);
-#else
+        mpz_mul_ui(mpz_power3  , mpz_power3  , 3);
+        mpz_mul_ui(mpz_power9_2, mpz_power9_2, 9);
+#endif
         power3   *= 3;
         power9_2 *= 9;
-#endif
         auto *newPolytets = new std::unordered_set<Polytet>;
         for (auto basePolytet=polytets->cbegin(); basePolytet!=polytets->cend(); ++basePolytet)
         {
@@ -465,19 +483,19 @@ int main(int argc, char *argv[])
                                         mpz_set_int128(y1, tetToRotate->t[vertexNum][1]);
                                         mpz_set_int128(z1, tetToRotate->t[vertexNum][2]);
 
-                                        mpz_set(x, x0); mpz_mul(x, x, power3); mpz_div(x, x, zz_denominator_mpz);
-                                        mpz_set(y, y0); mpz_mul(y, y, power3); mpz_div(y, y, zz_denominator_mpz);
-                                        mpz_set(z, z0); mpz_mul(z, z, power3); mpz_div(z, z, zz_denominator_mpz);
+                                        mpz_set(x, x0); mpz_mul(x, x, mpz_power3); mpz_div(x, x, zz_denominator_mpz);
+                                        mpz_set(y, y0); mpz_mul(y, y, mpz_power3); mpz_div(y, y, zz_denominator_mpz);
+                                        mpz_set(z, z0); mpz_mul(z, z, mpz_power3); mpz_div(z, z, zz_denominator_mpz);
 
-                                        mpz_set(x2, x1); mpz_mul(x2, x2, xx_numerator_mpz); mpz_mul(x2, x2, power9_2); mpz_div(x2, x2, xx_denominator_mpz);
-                                        mpz_set(x3, y1); mpz_mul(x3, x3, xy_numerator_mpz); mpz_mul(x3, x3, power9_2); mpz_div(x3, x3, xy_denominator_mpz); mpz_add(x2, x2, x3);
-                                        mpz_set(x3, z1); mpz_mul(x3, x3, xz_numerator_mpz); mpz_mul(x3, x3, power9_2); mpz_div(x3, x3, xz_denominator_mpz); mpz_add(x2, x2, x3); mpz_div(x2, x2, power3); mpz_add(x, x, x2);
-                                        mpz_set(y2, x1); mpz_mul(y2, y2, yx_numerator_mpz); mpz_mul(y2, y2, power9_2); mpz_div(y2, y2, yx_denominator_mpz);
-                                        mpz_set(y3, y1); mpz_mul(y3, y3, yy_numerator_mpz); mpz_mul(y3, y3, power9_2); mpz_div(y3, y3, yy_denominator_mpz); mpz_add(y2, y2, y3);
-                                        mpz_set(y3, z1); mpz_mul(y3, y3, yz_numerator_mpz); mpz_mul(y3, y3, power9_2); mpz_div(y3, y3, yz_denominator_mpz); mpz_add(y2, y2, y3); mpz_div(y2, y2, power3); mpz_add(y, y, y2);
-                                        mpz_set(z2, x1); mpz_mul(z2, z2, zx_numerator_mpz); mpz_mul(z2, z2, power9_2); mpz_div(z2, z2, zx_denominator_mpz);
-                                        mpz_set(z3, y1); mpz_mul(z3, z3, zy_numerator_mpz); mpz_mul(z3, z3, power9_2); mpz_div(z3, z3, zy_denominator_mpz); mpz_add(z2, z2, z3);
-                                        mpz_set(z3, z1); mpz_mul(z3, z3, zz_numerator_mpz); mpz_mul(z3, z3, power9_2); mpz_div(z3, z3, zz_denominator_mpz); mpz_add(z2, z2, z3); mpz_div(z2, z2, power3); mpz_add(z, z, z2);
+                                        mpz_set(x2, x1); mpz_mul(x2, x2, xx_numerator_mpz); mpz_mul(x2, x2, mpz_power9_2); mpz_div(x2, x2, xx_denominator_mpz);
+                                        mpz_set(x3, y1); mpz_mul(x3, x3, xy_numerator_mpz); mpz_mul(x3, x3, mpz_power9_2); mpz_div(x3, x3, xy_denominator_mpz); mpz_add(x2, x2, x3);
+                                        mpz_set(x3, z1); mpz_mul(x3, x3, xz_numerator_mpz); mpz_mul(x3, x3, mpz_power9_2); mpz_div(x3, x3, xz_denominator_mpz); mpz_add(x2, x2, x3); mpz_div(x2, x2, mpz_power3); mpz_add(x, x, x2);
+                                        mpz_set(y2, x1); mpz_mul(y2, y2, yx_numerator_mpz); mpz_mul(y2, y2, mpz_power9_2); mpz_div(y2, y2, yx_denominator_mpz);
+                                        mpz_set(y3, y1); mpz_mul(y3, y3, yy_numerator_mpz); mpz_mul(y3, y3, mpz_power9_2); mpz_div(y3, y3, yy_denominator_mpz); mpz_add(y2, y2, y3);
+                                        mpz_set(y3, z1); mpz_mul(y3, y3, yz_numerator_mpz); mpz_mul(y3, y3, mpz_power9_2); mpz_div(y3, y3, yz_denominator_mpz); mpz_add(y2, y2, y3); mpz_div(y2, y2, mpz_power3); mpz_add(y, y, y2);
+                                        mpz_set(z2, x1); mpz_mul(z2, z2, zx_numerator_mpz); mpz_mul(z2, z2, mpz_power9_2); mpz_div(z2, z2, zx_denominator_mpz);
+                                        mpz_set(z3, y1); mpz_mul(z3, z3, zy_numerator_mpz); mpz_mul(z3, z3, mpz_power9_2); mpz_div(z3, z3, zy_denominator_mpz); mpz_add(z2, z2, z3);
+                                        mpz_set(z3, z1); mpz_mul(z3, z3, zz_numerator_mpz); mpz_mul(z3, z3, mpz_power9_2); mpz_div(z3, z3, zz_denominator_mpz); mpz_add(z2, z2, z3); mpz_div(z2, z2, mpz_power3); mpz_add(z, z, z2);
 
                                         mpz_get_int128(nt.t[vertexNum][0], x);
                                         mpz_get_int128(nt.t[vertexNum][1], y);
@@ -489,6 +507,7 @@ int main(int argc, char *argv[])
                                         nt.t[vertexNum][2] = z0_*power3/zz_denominator + (tetToRotate->t[vertexNum][0]*zx_numerator*power9_2/zx_denominator + tetToRotate->t[vertexNum][1]*zy_numerator*power9_2/zy_denominator + tetToRotate->t[vertexNum][2]*zz_numerator*power9_2/zz_denominator)/power3;
 #endif
                                     }
+                                    verifyTetrahedron(nt, power9_2);
                                     memcpy(nt.faceAttached, tetToRotate->faceAttached, sizeof(nt.faceAttached));
                                 }
                                 // Update the running "least" rotation
