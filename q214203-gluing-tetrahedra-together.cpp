@@ -722,6 +722,7 @@ int main(int argc, char *argv[])
 #ifdef USE_GMP
     mpz_clears(
         x , y , z ,
+        x0, y0, z0,
         x1, y1, z1,
         x2, y2, z2,
         x3, y3, z3,
