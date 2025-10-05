@@ -114,13 +114,199 @@ Coord3 operator*(const Coord3 &a, const Coord b)
     c[2] = a[2] * b;
     return c;
 }
+#ifndef USE_GMP
 Coord dot(const Coord3 &a, const Coord3 &b)
 {
     return a[0]*b[0] + a[1]*b[1] + a[2]*b[2];
 }
+#endif
+
+#ifdef USE_GMP
+void mpz_set_int128(mpz_t &dst, const __int128 &src)
+{
+    __int128 abssrc = src < 0 ? -src : src;
+    mpz_import(dst, 2, -1, 4, 0, 0, &abssrc);
+    if (src < 0)
+        mpz_neg(dst, dst);
+}
+void mpz_get_int128(__int128 &dst, const mpz_t &src)
+{
+    dst = 0;
+    size_t count;
+    uint64_t limbs[2];
+
+    mpz_export(limbs, &count, -1, sizeof(uint64_t), 0, 0, src);
+
+    ((int64_t*)&dst)[0] = limbs[0];
+    if (count > 1)
+        ((int64_t*)&dst)[1] = limbs[1];
+
+    if (mpz_sgn(src) < 0)
+        dst = -dst;
+}
+#endif
 
 class TetrahedronOverlap
 {
+#ifdef USE_GMP
+    mpz_t intersectNumerator, intersectDenominator, uNumerator, vNumerator, uvDenominator, uvNumeratorSum;
+    mpz_t center[3], normal[3], tmp[3], p0p1[3], intersectionPoint[3], delta[3], edge1[3], edge2[3];
+    mpz_t a[4][3];
+    mpz_t b[4][3];
+    mpz_t triangle[3][3];
+    void setTetrahedron(mpz_t dst[4][3], const Tetrahedron &src)
+    {
+        for (int p=0; p<4; p++)
+            for (int d=0; d<3; d++)
+                mpz_set_int128(dst[p][d], src[p][d]);
+    }
+    void dot(mpz_t &result, const mpz_t a[3], const mpz_t b[3])
+    {
+        mpz_mul   (result, a[0], b[0]);
+        mpz_addmul(result, a[1], b[1]);
+        mpz_addmul(result, a[2], b[2]);
+    }
+public:
+    TetrahedronOverlap()
+    {
+        mpz_inits(intersectNumerator, intersectDenominator, uNumerator, vNumerator, uvDenominator, uvNumeratorSum, NULL);
+        for (int d=0; d<3; d++)
+        {
+            mpz_init(center[d]);
+            mpz_init(normal[d]);
+            mpz_init(tmp[d]);
+            mpz_init(p0p1[d]);
+            mpz_init(intersectionPoint[d]);
+            mpz_init(delta[d]);
+            mpz_init(edge1[d]);
+            mpz_init(edge2[d]);
+        }
+        for (int p=0; p<4; p++)
+        {
+            for (int d=0; d<3; d++)
+            {
+                mpz_init(a[p][d]);
+                mpz_init(b[p][d]);
+            }
+        }
+        for (int p=0; p<3; p++)
+            for (int d=0; d<3; d++)
+                mpz_init(triangle[p][d]);
+    }
+    ~TetrahedronOverlap()
+    {
+        mpz_clears(intersectNumerator, intersectDenominator, uNumerator, vNumerator, uvDenominator, uvNumeratorSum, NULL);
+        for (int d=0; d<3; d++)
+        {
+            mpz_clear(center[d]);
+            mpz_clear(normal[d]);
+            mpz_clear(tmp[d]);
+            mpz_clear(p0p1[d]);
+            mpz_clear(intersectionPoint[d]);
+            mpz_clear(delta[d]);
+            mpz_clear(edge1[d]);
+            mpz_clear(edge2[d]);
+        }
+        for (int p=0; p<4; p++)
+        {
+            for (int d=0; d<3; d++)
+            {
+                mpz_clear(a[p][d]);
+                mpz_clear(b[p][d]);
+            }
+        }
+        for (int p=0; p<3; p++)
+            for (int d=0; d<3; d++)
+                mpz_clear(triangle[p][d]);
+    }
+    void setA(const Tetrahedron &x) {setTetrahedron(a, x);}
+    void setB(const Tetrahedron &x) {setTetrahedron(b, x);}
+    bool operator()()
+    {
+        // Take advantage of the fact that the two tetrahedrons are regular and congruent, and
+        // just check if any edge of tetrahedron "a" intersects with any face of tetrahedron "b".
+        // Don't count it if only the endpoint of an edge intersects.
+        for (int edgeNum=0; edgeNum<6; edgeNum++)
+        {
+            const mpz_t *p0 = a[tetrahedronEdges[edgeNum][0]];
+            const mpz_t *p1 = a[tetrahedronEdges[edgeNum][1]];
+            for (int faceNum=0; faceNum<4; faceNum++)
+            {
+                mpz_t *normalizedTetrahedron[4][3]; // first 3 points are the face, and the 4th point is for calculating the normal
+                for (int i=0; i<4; i++)
+                    for (int d=0; d<3; d++)
+                        normalizedTetrahedron[i][d] = &b[tetrahedronFaces[faceNum][i]][d];
+                // Center coordinates will be multiplied by 3 compared to original coordinates.
+                // Get center of face by averaging its vertices' coordinates; the
+                // division by 3 is implied by omitting the multiplication by 3.
+                for (int d=0; d<3; d++)
+                    mpz_set(center[d], *(normalizedTetrahedron[0][d]));
+                for (int p=1; p<3; p++)
+                    for (int d=0; d<3; d++)
+                        mpz_add(center[d], center[d], *(normalizedTetrahedron[p][d]));
+                for (int d=0; d<3; d++)
+                {
+                    mpz_neg(normal[d], center[d]);
+                    mpz_addmul_ui(normal[d], *(normalizedTetrahedron[3][d]), 3);
+                }
+                for (int d=0; d<3; d++)
+                {
+                    mpz_sub(tmp [d], *(normalizedTetrahedron[0][d]), p0[d]);
+                    mpz_sub(p0p1[d],                         p1[d],  p0[d]);
+                }
+                dot(intersectNumerator  , normal, tmp);
+                dot(intersectDenominator, normal, p0p1);
+                int cmp = mpz_cmp_ui(intersectDenominator, 0);
+                if (cmp == 0)
+                    continue; // edge is parallel to face, which we don't count as an overlap
+                if (cmp < 0)
+                {
+                    mpz_neg(intersectNumerator  , intersectNumerator  );
+                    mpz_neg(intersectDenominator, intersectDenominator);
+                }
+                if (mpz_cmp_ui(intersectNumerator, 0) <= 0 || mpz_cmp(intersectNumerator, intersectDenominator) >= 0)
+                    continue;
+                // These coordinates are all multiplied by intersectDenominator
+                for (int d=0; d<3; d++)
+                {
+                    mpz_mul(intersectionPoint[d], p0[d], intersectDenominator);
+                    mpz_addmul(intersectionPoint[d], p0p1[d], intersectNumerator);
+                }
+                for (int i=0; i<3; i++)
+                    for (int d=0; d<3; d++)
+                        mpz_mul(triangle[i][d], *(normalizedTetrahedron[i][d]), intersectDenominator);
+                // Check if the intersection point is inside the triangle
+                for (int d=0; d<3; d++)
+                {
+                    mpz_sub(delta[d], intersectionPoint[d], triangle[0][d]);
+                    mpz_sub(edge1[d], triangle[1][d]      , triangle[0][d]);
+                    mpz_sub(edge2[d], triangle[2][d]      , triangle[0][d]);
+                }
+                mpz_mul   (uNumerator, delta[1], edge2[0]);
+                mpz_submul(uNumerator, delta[0], edge2[1]);
+                mpz_mul   (vNumerator, delta[0], edge1[1]);
+                mpz_submul(vNumerator, delta[1], edge1[0]);
+                mpz_mul   (uvDenominator, edge1[1], edge2[0]);
+                mpz_submul(uvDenominator, edge1[0], edge2[1]);
+                cmp = mpz_cmp_ui(uvDenominator, 0);
+                if (cmp == 0)
+                    continue;
+                if (cmp < 0)
+                {
+                    mpz_neg(uNumerator, uNumerator);
+                    mpz_neg(vNumerator, vNumerator);
+                    mpz_neg(uvDenominator, uvDenominator);
+                }
+                if (mpz_cmp_ui(uNumerator, 0) <= 0 || mpz_cmp_ui(vNumerator, 0) <= 0)
+                    continue;
+                mpz_add(uvNumeratorSum, uNumerator, vNumerator);
+                if (mpz_cmp(uvNumeratorSum, uvDenominator) < 0)
+                    return true;
+            }
+        }
+        return false;
+    }
+#else
     const Tetrahedron *a, *b;
 public:
     void setA(const Tetrahedron &x) {a = &x;}
@@ -165,11 +351,11 @@ public:
                 for (int i=0; i<3; i++)
                     triangle[i] = normalizedTetrahedron[i] * intersectDenominator;
                 // Check if the intersection point is inside the triangle
-                Coord3 d = intersectionPoint - triangle[0];
-                Coord3 edge1 = triangle[1] - triangle[0];
-                Coord3 edge2 = triangle[2] - triangle[0];
-                Coord uNumerator = d[1]*edge2[0] - d[0]*edge2[1];
-                Coord vNumerator = d[0]*edge1[1] - d[1]*edge1[0];
+                Coord3 delta = intersectionPoint - triangle[0];
+                Coord3 edge1 = triangle[1]       - triangle[0];
+                Coord3 edge2 = triangle[2]       - triangle[0];
+                Coord uNumerator = delta[1]*edge2[0] - delta[0]*edge2[1];
+                Coord vNumerator = delta[0]*edge1[1] - delta[1]*edge1[0];
                 Coord uvDenominator = edge1[1]*edge2[0] - edge1[0]*edge2[1];
                 if (uvDenominator == 0)
                     continue;
@@ -187,6 +373,7 @@ public:
         }
         return false;
     }
+#endif
 };
 
 void attachNewTet(Tet &t, Tet &tetToAttachTo, const int faceNum)
@@ -360,31 +547,6 @@ namespace std
         }
     };
 };
-
-#ifdef USE_GMP
-void mpz_set_int128(mpz_t &dst, const __int128 &src)
-{
-    __int128 abssrc = src < 0 ? -src : src;
-    mpz_import(dst, 2, -1, 4, 0, 0, &abssrc);
-    if (src < 0)
-        mpz_neg(dst, dst);
-}
-void mpz_get_int128(__int128 &dst, const mpz_t &src)
-{
-    dst = 0;
-    size_t count;
-    uint64_t limbs[2];
-
-    mpz_export(limbs, &count, -1, sizeof(uint64_t), 0, 0, src);
-
-    ((int64_t*)&dst)[0] = limbs[0];
-    if (count > 1)
-        ((int64_t*)&dst)[1] = limbs[1];
-
-    if (mpz_sgn(src) < 0)
-        dst = -dst;
-}
-#endif
 
 int main(int argc, char *argv[])
 {
@@ -625,6 +787,7 @@ int main(int argc, char *argv[])
         zx_numerator_mpz, zx_denominator_mpz,
         zy_numerator_mpz, zy_denominator_mpz,
         zz_numerator_mpz, zz_denominator_mpz, NULL);
+    
 #endif
     TetrahedronOverlap overlap;
     Coord power3   = 1;
