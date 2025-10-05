@@ -167,7 +167,8 @@ bool volumesOverlap(const Tetrahedron &a, const Tetrahedron &b)
 }
 void attachNewTet(Tet &t, const Tet &tetToAttachTo, const int faceNum)
 {
-    Coord3 newVertex = {{0, 0, 0}};
+    Coord3 &newVertex = t.t[3];
+    newVertex = {{0, 0, 0}};
     // Get center of face by averaging its vertices' coordinates; the
     // division by 3 is implied by omitting the multiplication by 3.
     for (int p=0; p<4; p++)
@@ -189,7 +190,6 @@ void attachNewTet(Tet &t, const Tet &tetToAttachTo, const int faceNum)
         for (int d=0; d<3; d++)
             t.t[p][d] = tetToAttachTo.t[p1][d] * 3;
     }
-    t.t[3] = newVertex;
     t.faceAttached[0] = true;
     t.faceAttached[1] = false;
     t.faceAttached[2] = false;
