@@ -114,14 +114,6 @@ Coord3 operator*(const Coord3 &a, const Coord b)
     c[2] = a[2] * b;
     return c;
 }
-Coord3 cross(const Coord3 a, const Coord3 b)
-{
-    Coord3 c;
-    c[0] = a[1]*b[2] - a[2]*b[1];
-    c[1] = a[2]*b[0] - a[0]*b[2];
-    c[2] = a[0]*b[1] - a[1]*b[0];
-    return c;
-}
 Coord dot(const Coord3 &a, const Coord3 &b)
 {
     return a[0]*b[0] + a[1]*b[1] + a[2]*b[2];
