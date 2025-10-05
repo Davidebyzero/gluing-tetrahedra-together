@@ -165,6 +165,36 @@ bool volumesOverlap(const Tetrahedron &a, const Tetrahedron &b)
     }
     return false;
 }
+void attachNewTet(Tet &t, const Tet &tetToAttachTo, const int faceNum)
+{
+    Coord3 newVertex = {{0, 0, 0}};
+    // Get center of face by averaging its vertices' coordinates; the
+    // division by 3 is implied by omitting the multiplication by 3.
+    for (int p=0; p<4; p++)
+    {
+        if (p == 3 - faceNum)
+            continue;
+        for (int d=0; d<3; d++)
+            newVertex[d] += tetToAttachTo.t[p][d];
+    }
+    for (int d=0; d<3; d++)
+        newVertex[d] += newVertex[d] - tetToAttachTo.t[3 - faceNum][d] * 3;
+    // Add new tetrahedron
+    for (int p=0; p<3; p++)
+    {
+        int p0 = p;
+        if (!(faceNum & 1))
+            p0 ^=      (p  <  2           ? 1 : 0); // swap first two vertices to preserve chirality
+        int p1  = p0 + (p0 >= 3 - faceNum ? 1 : 0); // skip the opposite vertex
+        for (int d=0; d<3; d++)
+            t.t[p][d] = tetToAttachTo.t[p1][d] * 3;
+    }
+    t.t[3] = newVertex;
+    t.faceAttached[0] = true;
+    t.faceAttached[1] = false;
+    t.faceAttached[2] = false;
+    t.faceAttached[3] = false;
+}
 
 class NormalizedPolytet : public std::vector<Tetrahedron>
 {
@@ -363,34 +393,8 @@ int main(int argc, char *argv[])
                                 tetCopyToAttachTo = &t;
                             }
                         }
-                        Coord3 newVertex = {{0, 0, 0}};
-                        // Get center of face by averaging its vertices' coordinates; the
-                        // division by 3 is implied by omitting the multiplication by 3.
-                        for (int p=0; p<4; p++)
-                        {
-                            if (p == 3 - faceNum)
-                                continue;
-                            for (int d=0; d<3; d++)
-                                newVertex[d] += tetToAttachTo->t[p][d];
-                        }
-                        for (int d=0; d<3; d++)
-                            newVertex[d] += newVertex[d] - tetToAttachTo->t[3 - faceNum][d] * 3;
-                        // Add new tetrahedron
                         Tet &t = newPolytet.emplace_back();
-                        for (int p=0; p<3; p++)
-                        {
-                            int p0 = p;
-                            if (!(faceNum & 1))
-                                p0 ^=      (p  <  2           ? 1 : 0); // swap first two vertices to preserve chirality
-                            int p1  = p0 + (p0 >= 3 - faceNum ? 1 : 0); // skip the opposite vertex
-                            for (int d=0; d<3; d++)
-                                t.t[p][d] = tetToAttachTo->t[p1][d] * 3;
-                        }
-                        t.t[3] = newVertex;
-                        t.faceAttached[0] = true;
-                        t.faceAttached[1] = false;
-                        t.faceAttached[2] = false;
-                        t.faceAttached[3] = false;
+                        attachNewTet(t, *tetToAttachTo, faceNum);
                         // Check for overlap between this newly attached tetrahedron and the existing ones
                         for (auto tetCheckIntersection=newPolytet.cbegin(); tetCheckIntersection!=newPolytet.cend(); ++tetCheckIntersection)
                         {
