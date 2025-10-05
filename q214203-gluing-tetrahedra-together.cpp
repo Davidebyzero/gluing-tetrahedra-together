@@ -21,6 +21,8 @@
 #   endif
 #endif
 
+auto startTime = std::chrono::steady_clock::now();
+
 typedef uint8_t TetIndex;
 typedef uint8_t TetIndexFace; // lowest 2 bits are used for a face index
 typedef __int128 Coord;
@@ -315,7 +317,8 @@ void verifyTetrahedron(const Tet &t, Coord power9_2)
             distSquared += diff[d] * diff[d];
         if (distSquared != targetDistSquared)
         {
-            std::cerr << "Quitting due to detected overflow" << std::endl;
+            auto currentTime = std::chrono::steady_clock::now();
+            std::cerr << "Quitting due to detected overflow" << " [" << std::chrono::duration_cast<std::chrono::milliseconds>(currentTime - startTime).count() << " ms]" << std::endl;
             exit(-1);
         }
     }
@@ -384,8 +387,6 @@ void mpz_get_int128(__int128 &dst, const mpz_t &src)
 
 int main(int argc, char *argv[])
 {
-    auto startTime = std::chrono::steady_clock::now();
-
 #if 1 // main
     static Tetrahedron start =
     {{
