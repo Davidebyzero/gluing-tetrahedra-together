@@ -178,9 +178,10 @@ void attachNewTet(Tet &t, const Tet &tetToAttachTo, const int faceNum)
         for (int d=0; d<3; d++)
             newVertex[d] += tetToAttachTo.t[p][d];
     }
+    // Finalize the new vertex
     for (int d=0; d<3; d++)
         newVertex[d] += newVertex[d] - tetToAttachTo.t[3 - faceNum][d] * 3;
-    // Add new tetrahedron
+    // Copy the other vertices
     for (int p=0; p<3; p++)
     {
         int p1 = tetrahedronFaces[faceNum][p];
