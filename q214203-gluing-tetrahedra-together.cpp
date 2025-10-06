@@ -429,6 +429,29 @@ bool operator==(const Polytet &_a, const Polytet &_b)
     return true;
 }
 
+#ifdef USE_GMP
+void verifyTetrahedron(mpz_t t[4][3], const mpz_t mpz_power9_8, mpz_t edge[3])
+{
+    for (int edgeNum=0; edgeNum<6; edgeNum++)
+    {
+        auto p0 = t[tetrahedronEdges[edgeNum][0]];
+        auto p1 = t[tetrahedronEdges[edgeNum][1]];
+        for (int d=0; d<3; d++)
+        {
+            mpz_sub(edge[d], p1[d], p0[d]);
+            mpz_mul(edge[d], edge[d], edge[d]);
+        }
+        for (int d=1; d<3; d++)
+            mpz_add(edge[0], edge[0], edge[d]);
+        if (mpz_cmp(edge[0], mpz_power9_8) != 0)
+        {
+            auto currentTime = std::chrono::steady_clock::now();
+            std::cerr << "Quitting due to detected overflow" << " [" << std::chrono::duration_cast<std::chrono::milliseconds>(currentTime - startTime).count() << " ms]" << std::endl;
+            exit(-1);
+        }
+    }
+}
+#else
 void verifyTetrahedron(const Tet &t, Coord power9_2)
 {
     Coord targetDistSquared = power9_2 * 4;
@@ -448,6 +471,7 @@ void verifyTetrahedron(const Tet &t, Coord power9_2)
         }
     }
 }
+#endif
 
 namespace std
 {
@@ -487,9 +511,10 @@ int main(int argc, char *argv[])
     startPolytet.emplace_back(start);
 
 #ifdef USE_GMP
-    mpz_t mpz_power3, mpz_power9_2;
+    mpz_t mpz_power3, mpz_power9_2, mpz_power9_8;
     mpz_init(mpz_power3  ); mpz_set_ui(mpz_power3  , 1);
     mpz_init(mpz_power9_2); mpz_set_ui(mpz_power9_2, 2);
+    mpz_init(mpz_power9_8); mpz_set_ui(mpz_power9_8, 8);
     mpz_t
         x , y , z ,
         x0, y0, z0,
@@ -505,6 +530,8 @@ int main(int argc, char *argv[])
         zx_numerator_mpz, zx_denominator_mpz,
         zy_numerator_mpz, zy_denominator_mpz,
         zz_numerator_mpz, zz_denominator_mpz;
+    mpz_t nt_mpz[4][3];
+    mpz_t edge[3]; // scratch for verifyTetrahedron()
     mpz_inits(
         x , y , z ,
         x0, y0, z0,
@@ -520,7 +547,11 @@ int main(int argc, char *argv[])
         zx_numerator_mpz, zx_denominator_mpz,
         zy_numerator_mpz, zy_denominator_mpz,
         zz_numerator_mpz, zz_denominator_mpz, NULL);
-    
+    for (int p=0; p<4; p++)
+        for (int d=0; d<3; d++)
+            mpz_init(nt_mpz[p][d]);
+    for (int d=0; d<3; d++)
+        mpz_init(edge[d]);
 #endif
     TetrahedronOverlap overlap;
     Coord power3   = 1;
@@ -547,6 +578,7 @@ int main(int argc, char *argv[])
 #ifdef USE_GMP
         mpz_mul_ui(mpz_power3  , mpz_power3  , 3);
         mpz_mul_ui(mpz_power9_2, mpz_power9_2, 9);
+        mpz_mul_ui(mpz_power9_8, mpz_power9_8, 9);
 #endif
         power3   *= 3;
         power9_2 *= 9;
@@ -669,13 +701,20 @@ int main(int argc, char *argv[])
                                         mpz_get_int128(nt.t[vertexNum][1], y);
                                         mpz_get_int128(nt.t[vertexNum][2], z);
 
+                                        mpz_set(nt_mpz[vertexNum][0], x);
+                                        mpz_set(nt_mpz[vertexNum][1], y);
+                                        mpz_set(nt_mpz[vertexNum][2], z);
 #else
                                         nt.t[vertexNum][0] = x0_*power3/zz_denominator + (tetToRotate->t[vertexNum][0]*xx_numerator*power9_2/xx_denominator + tetToRotate->t[vertexNum][1]*xy_numerator*power9_2/xy_denominator + tetToRotate->t[vertexNum][2]*xz_numerator*power9_2/xz_denominator)/power3;
                                         nt.t[vertexNum][1] = y0_*power3/zz_denominator + (tetToRotate->t[vertexNum][0]*yx_numerator*power9_2/yx_denominator + tetToRotate->t[vertexNum][1]*yy_numerator*power9_2/yy_denominator + tetToRotate->t[vertexNum][2]*yz_numerator*power9_2/yz_denominator)/power3;
                                         nt.t[vertexNum][2] = z0_*power3/zz_denominator + (tetToRotate->t[vertexNum][0]*zx_numerator*power9_2/zx_denominator + tetToRotate->t[vertexNum][1]*zy_numerator*power9_2/zy_denominator + tetToRotate->t[vertexNum][2]*zz_numerator*power9_2/zz_denominator)/power3;
 #endif
                                     }
+#ifdef USE_GMP
+                                    verifyTetrahedron(nt_mpz, mpz_power9_8, edge);
+#else
                                     verifyTetrahedron(nt, power9_2);
+#endif
                                     memcpy(nt.faceAttached, tetToRotate->faceAttached, sizeof(nt.faceAttached));
                                 }
                                 // Update the running "least" rotation
@@ -736,6 +775,11 @@ int main(int argc, char *argv[])
         zx_numerator_mpz, zx_denominator_mpz,
         zy_numerator_mpz, zy_denominator_mpz,
         zz_numerator_mpz, zz_denominator_mpz, NULL);
+    for (int p=0; p<4; p++)
+        for (int d=0; d<3; d++)
+            mpz_clear(nt_mpz[p][d]);
+    for (int d=0; d<3; d++)
+        mpz_clear(edge[d]);
 #endif
 	return 0;
 }
