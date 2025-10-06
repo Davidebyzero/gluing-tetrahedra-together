@@ -721,6 +721,7 @@ int main(int argc, char *argv[])
     delete polytets;
 #ifdef USE_GMP
     mpz_clears(
+        mpz_power3, mpz_power9_2, mpz_power9_8,
         x , y , z ,
         x0, y0, z0,
         x1, y1, z1,
