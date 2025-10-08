@@ -21,6 +21,8 @@
 #   endif
 #endif
 
+typedef uint8_t TetIndex;
+typedef uint8_t TetIndexFace; // lowest 2 bits are used for a face index
 typedef __int128 Coord;
 typedef std::array<Coord, 3> Coord3;
 typedef std::array<Coord3, 4> Tetrahedron;
@@ -36,10 +38,28 @@ class Tet
 public:
     Tetrahedron t;
     Tet *faceAttached[4];
+    TetIndex index; // 1-based; 0=unassigned
     Tet(                    ) : t( ) {initFaces();}
     Tet(const Tetrahedron &t) : t(t) {initFaces();}
+    void assignIndex(TetIndex &nextIndex)
+    {
+        if (index == 0)
+            index = nextIndex++;
+    }
 };
-typedef std::vector<Tet> Polytet;
+class Polytet : public std::vector<Tet>
+{
+public:
+    TetIndex nextIndex;
+    void resetIndexing() // This function should not be called if the polytet hasn't yet been populated
+    {
+        auto t=begin();
+        t->index = 1;
+        while (++t!=end())
+            t->index = 0;
+        nextIndex = 2;
+    }
+};
 
 // vertex indices of faces with identical chirality
 static int tetrahedronFaces[4][4] =
@@ -242,11 +262,12 @@ bool operator==(const Polytet &_a, const Polytet &_b)
 // it's attached. The lower 2 bits indicate which face (can only have 3 different values, because at least 1 face
 // will always already be attached). The remaining bits indicate which tetrahedron (which can never be zero,
 // because that one is attached implicitly).
-class CompressedPolytet : public std::vector<uint32_t>
+class CompressedPolytet : public std::vector<TetIndexFace>
 {
 public:
-    void append(const Polytet &polytet, const Tet &tetToCompress, int vertexMap[4])
+    void append(Polytet &polytet, Tet &tetToCompress, int vertexMap[4])
     {
+        tetToCompress.assignIndex(polytet.nextIndex);
         int faceMap[4];
         for (int faceNum=0; faceNum<4; faceNum++)
             faceMap[3 - vertexMap[3 - faceNum]] = faceNum;
@@ -256,13 +277,14 @@ public:
             if (!tetToCompress.faceAttached[faceNum])
                 continue;
             Tet *attachedTet = tetToCompress.faceAttached[faceNum];
-            push_back((((size_t)(attachedTet - polytet.data())) << 2) + faceNum);
+            attachedTet->assignIndex(polytet.nextIndex);
+            push_back((((TetIndexFace)(tetToCompress.index - 1)) << 2) + faceNum);
             
             int attachedFace = 0;
             while (attachedTet->faceAttached[attachedFace] != &tetToCompress)
                 attachedFace++;
             int vertexMap2[4];
-            int rotation = vertexMap[tetrahedronFaces[faceNum][0]];
+            /*int rotation = vertexMap[tetrahedronFaces[faceNum][0]];
             if (rotation > 3 - _faceNum)
                 rotation--;
             for (int p=0; p<4; p++)
@@ -272,8 +294,9 @@ public:
                     vertexMap2[(p + 1) % 3] = p2;
                 else
                     vertexMap2[tetrahedronFaces[attachedFace][p]] = p2;
-            }
-            append(polytet, *attachedTet, vertexMap2);
+            }*/
+            //std::cerr << "Call append recursively" << std::endl;
+            append(polytet, *attachedTet, vertexMap/*2*/);
         }
     }
 };
@@ -371,7 +394,7 @@ int main(int argc, char *argv[])
             continue;
 
         Polytet polytet;
-        polytet.reserve(2);
+        polytet.reserve(tetCount); // Important, to ensure pointers don't change
         Tet &t0    = polytet.emplace_back(start);
         attachNewTet(polytet.emplace_back(), t0, 3);
 
@@ -379,13 +402,21 @@ int main(int argc, char *argv[])
         polytet.resize(tetCount);
         for (auto basePolytet=polytets->cbegin(); basePolytet!=polytets->cend(); ++basePolytet)
         {
+            //std::cerr << "{";
             int tetNumToUncompress = 2;
             for (auto elementToUncompress=basePolytet->cbegin(); elementToUncompress!=basePolytet->cend(); ++elementToUncompress)
             {
                 int faceNum          = *elementToUncompress & 3;
                 int tetNumToAttachTo = *elementToUncompress >> 2;
+                //std::cerr << "face" << faceNum << "->" << tetNumToAttachTo << " ";
                 Tet &tetToAttachTo = polytet[tetNumToAttachTo];
                 attachNewTet(polytet[tetNumToUncompress++], tetToAttachTo, faceNum);
+            }
+            //std::cerr << "}" << std::endl;
+            if (tetNumToUncompress != tetCount - 1)
+            {
+                std::cerr << "Error! Got " << tetNumToUncompress << ", expected " << tetCount - 1 << std::endl;
+                exit(-1);
             }
 
             Tet &newTet = polytet[tetCount - 1];
@@ -406,6 +437,29 @@ int main(int argc, char *argv[])
                             goto discardThisNewPolytet;
                     }
                     // Canonicalize the rotation of this new polytet in compressed form, so that it can be compared against others
+#if 1
+                    {
+                        polytet.resetIndexing();
+                        CompressedPolytet newRotatedPolytet;
+                        newRotatedPolytet.reserve(tetCount - 2);
+                        static int vertexMap[4] = {0, 1, 2, 3};
+                        //std::cerr << "Call append" << std::endl;
+                        newRotatedPolytet.append(polytet, polytet[1], vertexMap);
+                        newPolytets->insert(newRotatedPolytet);
+
+                        /*std::cerr << "[" << std::endl;
+                        for (int i=0; i<polytet.size(); i++)
+                        {
+                            std::cerr << "  " << i << " (" << (int)polytet[i].index << "):" << std::endl;
+                            for (int j=0; j<4; j++)
+                                if (polytet[i].faceAttached[j])
+                                    std::cerr << "    face" << j << " -> " << (polytet[i].faceAttached[j] - polytet.data()) << std::endl;
+                        }
+                        std::cerr << "]"  << std::endl;
+                        
+                        std::cerr << "Got " << newRotatedPolytet.size() << ", expected " << tetCount - 2 << std::endl;*/
+                    }
+#else
                     {
                         bool haveRunningLeast = false;
                         CompressedPolytet runningLeastPolytet;
@@ -454,6 +508,7 @@ int main(int argc, char *argv[])
                         }
                         newPolytets->insert(runningLeastPolytet);
                     }
+#endif
                 discardThisNewPolytet:
                     tetToAttachTo.faceAttached[faceNum] = NULL;
                 }
