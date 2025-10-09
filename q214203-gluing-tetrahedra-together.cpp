@@ -23,6 +23,13 @@
 
 auto startTime = std::chrono::steady_clock::now();
 
+void quitOverflow()
+{
+    auto currentTime = std::chrono::steady_clock::now();
+    std::cerr << "Quitting due to detected overflow" << " [" << std::chrono::duration_cast<std::chrono::milliseconds>(currentTime - startTime).count() << " ms]" << std::endl;
+    exit(-1);
+}
+
 typedef uint8_t TetIndex;
 typedef uint8_t TetIndexFace; // lowest 2 bits are used for a face index
 typedef __int128 Coord;
@@ -137,11 +144,21 @@ void mpz_get_int128(__int128 &dst, const mpz_t &src)
 
     mpz_export(limbs, &count, -1, sizeof(uint64_t), 0, 0, src);
 
-    ((int64_t*)&dst)[0] = limbs[0];
-    if (count > 1)
-        ((int64_t*)&dst)[1] = limbs[1];
+    if (count > 2)
+        quitOverflow();
 
-    if (mpz_sgn(src) < 0)
+    bool isNegative = mpz_sgn(src) < 0;
+
+    ((uint64_t*)&dst)[0] = limbs[0];
+    if (count > 1)
+    {
+        if (limbs[1] > INT64_MAX)
+            if (!isNegative || limbs[1] > (uint64_t)INT64_MIN || limbs[0] != 0)
+                quitOverflow();
+        ((uint64_t*)&dst)[1] = limbs[1];
+    }
+
+    if (isNegative)
         dst = -dst;
 }
 #endif
