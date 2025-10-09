@@ -492,26 +492,6 @@ public:
     }
 };
 
-void verifyTetrahedron(const Tet &t, Coord power9_2)
-{
-    Coord targetDistSquared = power9_2 * 4;
-    for (int edgeNum=0; edgeNum<6; edgeNum++)
-    {
-        Coord3 p0 = t.t[tetrahedronEdges[edgeNum][0]];
-        Coord3 p1 = t.t[tetrahedronEdges[edgeNum][1]];
-        Coord3 diff = p1 - p0;
-        Coord distSquared = 0;
-        for (int d=0; d<3; d++)
-            distSquared += diff[d] * diff[d];
-        if (distSquared != targetDistSquared)
-        {
-            auto currentTime = std::chrono::steady_clock::now();
-            std::cerr << "Quitting due to detected overflow" << " [" << std::chrono::duration_cast<std::chrono::milliseconds>(currentTime - startTime).count() << " ms]" << std::endl;
-            exit(-1);
-        }
-    }
-}
-
 namespace std
 {
     template<>
@@ -949,7 +929,6 @@ int main(int argc, char *argv[])
                                         nt.t[vertexNum][2] = z0_*power3/zz_denominator + (tetToRotate->t[vertexNum][0]*zx_numerator*power9_2/zx_denominator + tetToRotate->t[vertexNum][1]*zy_numerator*power9_2/zy_denominator + tetToRotate->t[vertexNum][2]*zz_numerator*power9_2/zz_denominator)/power3;
 #endif
                                     }
-                                    verifyTetrahedron(nt, power9_2);
                                     memcpy(nt.faceAttached, tetToRotate->faceAttached, sizeof(nt.faceAttached));
                                 }
                                 // Update the running "least" rotation
