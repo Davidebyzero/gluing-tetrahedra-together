@@ -682,8 +682,8 @@ int main(int argc, char *argv[])
                                 // Update the running "least" rotation
                                 if (!haveRunningLeast ||
                                     std::lexicographical_compare(
-                                        runningLeastPolytet.begin(), runningLeastPolytet.end(),
-                                        newRotatedPolytet  .begin(), newRotatedPolytet  .end()))
+                                        newRotatedPolytet  .begin(), newRotatedPolytet  .end(),
+                                        runningLeastPolytet.begin(), runningLeastPolytet.end()))
                                 {
                                     haveRunningLeast = true;
                                     runningLeastPolytet = newRotatedPolytet;
