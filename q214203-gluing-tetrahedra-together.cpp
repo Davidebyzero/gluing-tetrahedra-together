@@ -618,16 +618,6 @@ int main(int argc, char *argv[])
                         }
                         Tet &t = newPolytet.emplace_back();
                         attachNewTet(t, *tetToAttachTo, faceNum);
-                        // Check for overlap between this newly attached tetrahedron and the existing ones
-                        overlap.setA(t.t);
-                        for (auto tetCheckIntersection=newPolytet.cbegin(); tetCheckIntersection!=newPolytet.cend(); ++tetCheckIntersection)
-                        {
-                            if (&*tetCheckIntersection == tetCopyToAttachTo || &*tetCheckIntersection == &t)
-                                continue; // skip this check for speed (it'll always be false anyway)
-                            overlap.setB(tetCheckIntersection->t);
-                            if (overlap())
-                                goto discardThisNewPolytet;
-                        }
                         // Canonicalize the rotation of this new polytet, so that it can be compared against others
                         bool haveRunningLeast = false;
                         Polytet runningLeastPolytet;
@@ -740,9 +730,24 @@ int main(int argc, char *argv[])
                                 n[0] = tmpFace;
                             }
                         }
-                        newPolytets->insert(runningLeastPolytet);
+                        if (auto [insertedItem, wasInserted] = newPolytets->emplace(runningLeastPolytet); wasInserted)
+                        {
+                            // Check for overlap between this newly attached tetrahedron and the existing ones,
+                            // with this being deferred until after the deduplication, to save time.
+                            overlap.setA(t.t);
+                            for (auto tetCheckIntersection=newPolytet.cbegin(); tetCheckIntersection!=newPolytet.cend(); ++tetCheckIntersection)
+                            {
+                                if (&*tetCheckIntersection == tetCopyToAttachTo || &*tetCheckIntersection == &t)
+                                    continue; // skip this check for speed (it'll always be false anyway)
+                                overlap.setB(tetCheckIntersection->t);
+                                if (overlap())
+                                {
+                                    newPolytets->erase(insertedItem);
+                                    break;
+                                }
+                            }
+                        }
                     }
-                discardThisNewPolytet:;
                 }
             }
         }
