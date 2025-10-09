@@ -615,16 +615,6 @@ int main(int argc, char *argv[])
                     if (tetToAttachTo.faceAttached[faceNum])
                         continue;
                     attachNewTet(newTet, tetToAttachTo, faceNum);
-                    // Check for overlap between this newly attached tetrahedron and the existing ones
-                    overlap.setA(newTet.t);
-                    for (auto tetCheckIntersection=polytet.cbegin(); tetCheckIntersection!=polytet.cend(); ++tetCheckIntersection)
-                    {
-                        if (&*tetCheckIntersection == &tetToAttachTo || &*tetCheckIntersection == &newTet)
-                            continue; // skip this check for speed (it'll always be false anyway)
-                        overlap.setB(tetCheckIntersection->t);
-                        if (overlap())
-                            goto discardThisNewPolytet;
-                    }
                     // Canonicalize the rotation of this new polytet in compressed form, so that it can be compared against others
 #if 0
                     {
@@ -721,11 +711,28 @@ int main(int argc, char *argv[])
                             }
                         skipThisTet:;
                         }
-                        newPolytets->insert(runningLeastPolytet);
+                        if (auto [insertedItem, wasInserted] = newPolytets->emplace(runningLeastPolytet); wasInserted)
+                        {
+                            // Check for overlap between this newly attached tetrahedron and the existing ones,
+                            // and defer this until after the deduplication, to save a lot of time
+                            overlap.setA(newTet.t);
+                            for (auto tetCheckIntersection=polytet.cbegin(); tetCheckIntersection!=polytet.cend(); ++tetCheckIntersection)
+                            {
+                                if (&*tetCheckIntersection == &tetToAttachTo || &*tetCheckIntersection == &newTet)
+                                    continue; // skip this check for speed (it'll always be false anyway)
+                                overlap.setB(tetCheckIntersection->t);
+                                if (overlap())
+                                {
+                                    //goto discardThisNewPolytet;
+                                    newPolytets->erase(insertedItem);
+                                    break;
+                                }
+                            }
+                        }
                         //std::cerr << "+" << std::endl;
                     }
 #endif
-                discardThisNewPolytet:
+                //discardThisNewPolytet:
                     tetToAttachTo.faceAttached[faceNum] = NULL;
                 }
             }
