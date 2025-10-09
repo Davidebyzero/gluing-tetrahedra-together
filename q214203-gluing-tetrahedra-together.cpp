@@ -265,13 +265,14 @@ bool operator==(const Polytet &_a, const Polytet &_b)
 class CompressedPolytet : public std::vector<TetIndexFace>
 {
 public:
-    void append(Polytet &polytet, Tet &tetToCompress, int vertexMap[4])
+    void append(Polytet &polytet, Tet &tetToCompress, int vertexMap[4], int faceRotation)
     // indices of vertexMap[] are compressed-output vertices; elements of vertexMap[] are the original vertices of tetToCompress
     {
         tetToCompress.assignIndex(polytet.nextIndex);
         for (int _faceNum=0; _faceNum<3; _faceNum++)
         {
-            int faceNum = 3 - vertexMap[tetrahedronFaces[_faceNum][3]];
+            int rotatedFaceNum = (_faceNum + faceRotation) % 3;
+            int faceNum = 3 - vertexMap[3 - rotatedFaceNum];
             if (!tetToCompress.faceAttached[faceNum])
                 continue;
             Tet *attachedTet = tetToCompress.faceAttached[faceNum];
@@ -283,13 +284,19 @@ public:
                 attachedFace++;
             int vertexMap2[4];
             int rotation = 0;
-            while (vertexMap[tetrahedronFaces[_faceNum][rotation]] != tetrahedronFaces[faceNum][0])
+            while (vertexMap[tetrahedronFaces[rotatedFaceNum][rotation]] != tetrahedronFaces[faceNum][0])
                 rotation++;
+            vertexMap2[1] = tetrahedronFaces[attachedFace][0];
+            vertexMap2[3] = tetrahedronFaces[attachedFace][1];
+            vertexMap2[2] = tetrahedronFaces[attachedFace][2];
             vertexMap2[0] = tetrahedronFaces[attachedFace][3];
-            vertexMap2[1] = tetrahedronFaces[attachedFace][ rotation         ];
-            vertexMap2[3] = tetrahedronFaces[attachedFace][(rotation + 1) % 3];
-            vertexMap2[2] = tetrahedronFaces[attachedFace][(rotation + 2) % 3];
-            append(polytet, *attachedTet, vertexMap2);
+            if (faceNum == 3)
+            {
+                int tmp = vertexMap2[3];
+                vertexMap2[3] = vertexMap2[2];
+                vertexMap2[2] = tmp;
+            }
+            append(polytet, *attachedTet, vertexMap2, rotation);
         }
     }
 };
@@ -371,6 +378,8 @@ int main(int argc, char *argv[])
     auto *polytets = new std::unordered_set<CompressedPolytet>;
     polytets->insert(CompressedPolytet()); // add empty vector as the starter polytet (meaning it has two tetrahedrons)
     size_t prevPolytetCount = 0;
+    
+    size_t blahNum = 0;
 
     for (int tetCount=1;;)
     {
@@ -385,6 +394,8 @@ int main(int argc, char *argv[])
         prevPolytetCount = polytetCount;
         if (++tetCount <= 2)
             continue;
+        /*if (tetCount > 6)
+            break;*/
 
         Polytet polytet;
         polytet.reserve(tetCount); // Important, to ensure pointers don't change
@@ -437,17 +448,6 @@ int main(int argc, char *argv[])
                         newPolytets->insert(newRotatedPolytet);
                     }
 #else
-                    /*{
-                        std::cerr << "[" << std::endl;
-                        for (int i=0; i<polytet.size(); i++)
-                        {
-                            std::cerr << "  " << i << " (" << (int)polytet[i].index << "):" << std::endl;
-                            for (int j=0; j<4; j++)
-                                if (polytet[i].faceAttached[j])
-                                    std::cerr << "    face" << j << " -> " << (polytet[i].faceAttached[j] - polytet.data()) << std::endl;
-                        }
-                        std::cerr << "]"  << std::endl;
-                    }*/
                     {
                         bool haveRunningLeast = false;
                         CompressedPolytet runningLeastPolytet;
@@ -456,6 +456,7 @@ int main(int argc, char *argv[])
                         Tet *t = &polytet[1];
                         for (int i=1; i<tetCount; i++)
                         {
+                            int attachedFace;
                             if (i > 1)
                             {
                                 Tet &singlyAttachedTet = polytet[i];
@@ -463,7 +464,7 @@ int main(int argc, char *argv[])
                                     if (singlyAttachedTet.faceAttached[j])
                                         goto skipThisTet; // not a singly attached tet
                                 t = singlyAttachedTet.faceAttached[3];
-                                int attachedFace = 0;
+                                attachedFace = 0;
                                 while (t->faceAttached[attachedFace] != &singlyAttachedTet)
                                     attachedFace++;
                                 static int vertexMapTable[3][4] =
@@ -479,9 +480,22 @@ int main(int argc, char *argv[])
                                 polytet.resetIndexing(i > 1 ? i : 0);
                                 CompressedPolytet newRotatedPolytet;
                                 newRotatedPolytet.reserve(tetCount - 2);
-                                newRotatedPolytet.append(polytet, i > 1 ? *polytet[i].faceAttached[3] : polytet[1], vertexMap);
+                                newRotatedPolytet.append(polytet, *t, vertexMap, rotationStep);
+
+                                /*if (i==1 && rotationStep==0)
+                                {
+                                    std::cerr << "[" << blahNum++ << std::endl;
+                                    for (int i=0; i<polytet.size(); i++)
+                                    {
+                                        std::cerr << "  " << i << " (" << (int)polytet[i].index - 1 << "):" << std::endl;
+                                        for (int j=0; j<4; j++)
+                                            if (polytet[i].faceAttached[j])
+                                                std::cerr << "    face" << j << " -> " << (polytet[i].faceAttached[j] - polytet.data()) << std::endl;
+                                    }
+                                    std::cerr << "]"  << std::endl;
+                                }
                                 
-                                /*std::cerr << "{ 1->0[3] ";
+                                std::cerr << "{ 1->0[3] ";
                                 int tetNumToUncompress = 2;
                                 for (size_t i=0; i<newRotatedPolytet.size(); i++)
                                 {
@@ -502,10 +516,20 @@ int main(int argc, char *argv[])
                                     //std::cerr << "=" << std::endl;
                                 }
                                 // Switch to the next rotation
-                                int tmp = vertexMap[3];
-                                vertexMap[3] = vertexMap[2];
-                                vertexMap[2] = vertexMap[1];
-                                vertexMap[1] = tmp;
+                                /*if (i > 1)
+                                {
+                                    int tmp = vertexMap[tetrahedronFaces[attachedFace][1]];
+                                    vertexMap[tetrahedronFaces[attachedFace][1]] = vertexMap[tetrahedronFaces[attachedFace][2]];
+                                    vertexMap[tetrahedronFaces[attachedFace][2]] = vertexMap[tetrahedronFaces[attachedFace][0]];
+                                    vertexMap[tetrahedronFaces[attachedFace][0]] = tmp;
+                                }
+                                else
+                                {
+                                    int tmp = vertexMap[3];
+                                    vertexMap[3] = vertexMap[2];
+                                    vertexMap[2] = vertexMap[1];
+                                    vertexMap[1] = tmp;
+                                }*/
                             }
                         skipThisTet:;
                         }
