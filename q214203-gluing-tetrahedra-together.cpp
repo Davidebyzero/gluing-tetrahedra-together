@@ -125,7 +125,7 @@ Coord dot(const Coord3 &a, const Coord3 &b)
 void mpz_set_int128(mpz_t &dst, const __int128 &src)
 {
     __int128 abssrc = src < 0 ? -src : src;
-    mpz_import(dst, 2, -1, 4, 0, 0, &abssrc);
+    mpz_import(dst, 2, -1, 8, 0, 0, &abssrc);
     if (src < 0)
         mpz_neg(dst, dst);
 }
