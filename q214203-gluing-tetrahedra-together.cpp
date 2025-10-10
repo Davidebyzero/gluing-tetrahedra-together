@@ -12,7 +12,6 @@
 #include <chrono>
 
 //#define USE_GMP
-//#define DEBUG_PRINT
 
 #ifdef USE_GMP
 #include <gmp.h>
@@ -612,123 +611,68 @@ int main(int argc, char *argv[])
                         continue;
                     attachNewTet(newTet, tetToAttachTo, faceNum);
                     // Canonicalize the rotation of this new polytet in compressed form, so that it can be compared against others
-#if 0
-                    {
-                        polytet.resetIndexing(0);
-                        CompressedPolytet newRotatedPolytet;
-                        newRotatedPolytet.reserve(tetCount - 2);
-                        static int vertexMap[4] = {0, 1, 2, 3};
-                        newRotatedPolytet.append(polytet, polytet[1], vertexMap);
-                        newPolytets->insert(newRotatedPolytet);
-                    }
-#else
-                    {
-                        bool haveRunningLeast = false;
-                        CompressedPolytet runningLeastPolytet;
+                    bool haveRunningLeast = false;
+                    CompressedPolytet runningLeastPolytet;
 
-                        Tet *t = &polytet[1];
-                        for (int i=0; i<tetCount; i++)
+                    Tet *t = &polytet[1];
+                    for (int i=0; i<tetCount; i++)
+                    {
+                        int attachedFace;
+                        int vertexMap[4];
                         {
-                            int attachedFace;
-                            int vertexMap[4];
+                            Tet &singlyAttachedTet = polytet[i];
+                            for (int j=0; j<3; j++)
+                                if (singlyAttachedTet.faceAttached[j])
+                                    goto skipThisTet; // not a singly attached tet
+                            t = singlyAttachedTet.faceAttached[3];
+                            attachedFace = 0;
+                            while (t->faceAttached[attachedFace] != &singlyAttachedTet)
+                                attachedFace++;
+                            static int vertexMapTable[4][4] =
                             {
-                                Tet &singlyAttachedTet = polytet[i];
-                                for (int j=0; j<3; j++)
-                                    if (singlyAttachedTet.faceAttached[j])
-                                        goto skipThisTet; // not a singly attached tet
-                                t = singlyAttachedTet.faceAttached[3];
-                                attachedFace = 0;
-                                while (t->faceAttached[attachedFace] != &singlyAttachedTet)
-                                    attachedFace++;
-                                static int vertexMapTable[4][4] =
-                                {
-                                    {3, 0, 2, 1},
-                                    {2, 0, 1, 3},
-                                    {1, 0, 3, 2},
-                                    {0, 1, 2, 3},
-                                };
-                                memcpy(vertexMap, vertexMapTable[attachedFace], sizeof(vertexMap));
-                            }
-                            for (int rotationStep=0; rotationStep<3; rotationStep++)
-                            {
-                                polytet.resetIndexing(i);
-                                CompressedPolytet newRotatedPolytet;
-                                newRotatedPolytet.reserve(tetCount - 2);
-                                newRotatedPolytet.append(polytet, *t, vertexMap, rotationStep);
-
-                                /*if (i==1 && rotationStep==0)
-                                {
-                                    std::cerr << "[" << blahNum++ << std::endl;
-                                    for (int i=0; i<polytet.size(); i++)
-                                    {
-                                        std::cerr << "  " << i << " (" << (int)polytet[i].index - 1 << "):" << std::endl;
-                                        for (int j=0; j<4; j++)
-                                            if (polytet[i].faceAttached[j])
-                                                std::cerr << "    face" << j << " -> " << (polytet[i].faceAttached[j] - polytet.data()) << std::endl;
-                                    }
-                                    std::cerr << "]"  << std::endl;
-                                }
-                                
-                                std::cerr << "{ 1->0[3] ";
-                                int tetNumToUncompress = 2;
-                                for (size_t i=0; i<newRotatedPolytet.size(); i++)
-                                {
-                                    int faceNum          = newRotatedPolytet[i] & 3;
-                                    int tetNumToAttachTo = newRotatedPolytet[i] >> 2;
-                                    std::cerr << i+2 << "->" << tetNumToAttachTo << "[" << faceNum << "] ";
-                                }
-                                std::cerr << "}" << std::endl;*/
-                                
-                                // Update the running "least" rotation
-                                if (!haveRunningLeast ||
-                                    std::lexicographical_compare(
-                                        newRotatedPolytet  .begin(), newRotatedPolytet  .end(),
-                                        runningLeastPolytet.begin(), runningLeastPolytet.end()))
-                                {
-                                    haveRunningLeast = true;
-                                    runningLeastPolytet = newRotatedPolytet;
-                                    //std::cerr << "=" << std::endl;
-                                }
-                                // Switch to the next rotation
-                                /*if (i > 1)
-                                {
-                                    int tmp = vertexMap[tetrahedronFaces[attachedFace][1]];
-                                    vertexMap[tetrahedronFaces[attachedFace][1]] = vertexMap[tetrahedronFaces[attachedFace][2]];
-                                    vertexMap[tetrahedronFaces[attachedFace][2]] = vertexMap[tetrahedronFaces[attachedFace][0]];
-                                    vertexMap[tetrahedronFaces[attachedFace][0]] = tmp;
-                                }
-                                else
-                                {
-                                    int tmp = vertexMap[3];
-                                    vertexMap[3] = vertexMap[2];
-                                    vertexMap[2] = vertexMap[1];
-                                    vertexMap[1] = tmp;
-                                }*/
-                            }
-                        skipThisTet:;
+                                {3, 0, 2, 1},
+                                {2, 0, 1, 3},
+                                {1, 0, 3, 2},
+                                {0, 1, 2, 3},
+                            };
+                            memcpy(vertexMap, vertexMapTable[attachedFace], sizeof(vertexMap));
                         }
-                        if (auto [insertedItem, wasInserted] = newPolytets->emplace(runningLeastPolytet); wasInserted)
+                        for (int rotationStep=0; rotationStep<3; rotationStep++)
                         {
-                            // Check for overlap between this newly attached tetrahedron and the existing ones,
-                            // and defer this until after the deduplication, to save a lot of time
-                            overlap.setA(newTet.t);
-                            for (auto tetCheckIntersection=polytet.cbegin(); tetCheckIntersection!=polytet.cend(); ++tetCheckIntersection)
+                            polytet.resetIndexing(i);
+                            CompressedPolytet newRotatedPolytet;
+                            newRotatedPolytet.reserve(tetCount - 2);
+                            newRotatedPolytet.append(polytet, *t, vertexMap, rotationStep);
+
+                            // Update the running "least" rotation
+                            if (!haveRunningLeast ||
+                                std::lexicographical_compare(
+                                    newRotatedPolytet  .begin(), newRotatedPolytet  .end(),
+                                    runningLeastPolytet.begin(), runningLeastPolytet.end()))
                             {
-                                if (&*tetCheckIntersection == &tetToAttachTo || &*tetCheckIntersection == &newTet)
-                                    continue; // skip this check for speed (it'll always be false anyway)
-                                overlap.setB(tetCheckIntersection->t);
-                                if (overlap())
-                                {
-                                    //goto discardThisNewPolytet;
-                                    newPolytets->erase(insertedItem);
-                                    break;
-                                }
+                                haveRunningLeast = true;
+                                runningLeastPolytet = newRotatedPolytet;
                             }
                         }
-                        //std::cerr << "+" << std::endl;
+                    skipThisTet:;
                     }
-#endif
-                //discardThisNewPolytet:
+                    if (auto [insertedItem, wasInserted] = newPolytets->emplace(runningLeastPolytet); wasInserted)
+                    {
+                        // Check for overlap between this newly attached tetrahedron and the existing ones,
+                        // and defer this until after the deduplication, to save a lot of time
+                        overlap.setA(newTet.t);
+                        for (auto tetCheckIntersection=polytet.cbegin(); tetCheckIntersection!=polytet.cend(); ++tetCheckIntersection)
+                        {
+                            if (&*tetCheckIntersection == &tetToAttachTo || &*tetCheckIntersection == &newTet)
+                                continue; // skip this check for speed (it'll always be false anyway)
+                            overlap.setB(tetCheckIntersection->t);
+                            if (overlap())
+                            {
+                                newPolytets->erase(insertedItem);
+                                break;
+                            }
+                        }
+                    }
                     tetToAttachTo.faceAttached[faceNum] = NULL;
                 }
             }
