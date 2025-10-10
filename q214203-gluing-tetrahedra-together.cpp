@@ -81,14 +81,7 @@ static int tetrahedronEdges[6][2] =
     {2, 3},
 };
 
-Coord3 operator-(const Coord3 &a)
-{
-    Coord3 c;
-    c[0] = -a[0];
-    c[1] = -a[1];
-    c[2] = -a[2];
-    return c;
-}
+#ifndef USE_GMP
 Coord3 operator+(const Coord3 &a, const Coord3 &b)
 {
     Coord3 c;
@@ -113,7 +106,6 @@ Coord3 operator*(const Coord3 &a, const Coord b)
     c[2] = a[2] * b;
     return c;
 }
-#ifndef USE_GMP
 Coord dot(const Coord3 &a, const Coord3 &b)
 {
     return a[0]*b[0] + a[1]*b[1] + a[2]*b[2];
@@ -389,50 +381,6 @@ void attachNewTet(Tet &t, Tet &tetToAttachTo, const int faceNum)
     tetToAttachTo.faceAttached[faceNum] = &t;
 }
 
-class NormalizedPolytet : public std::vector<Tetrahedron>
-{
-public:
-    NormalizedPolytet(const Polytet &polytet)
-    {
-        reserve(polytet.size());
-        for (auto tet=polytet.cbegin(); tet!=polytet.cend(); ++tet)
-        {
-            Tetrahedron &t = emplace_back(tet->t);
-            std::sort(t.begin(), t.end());
-        }
-        std::sort(this->begin(), this->end());
-    }
-};
-
-bool operator<(const Polytet &_a, const Polytet &_b)
-// implicitly assume a.size()==b.size()
-{
-    NormalizedPolytet a(_a), b(_b);
-    for (auto ta=a.cbegin(), tb=b.cbegin(); ta!=a.cend(); ++ta,++tb)
-    {
-        auto result = *ta <=> *tb;
-        if (result != 0)
-            return result < 0;
-    }
-    return false;
-}
-bool operator>(const Polytet &a, const Polytet &b)
-{
-    return !(a < b);
-}
-bool operator==(const Polytet &_a, const Polytet &_b)
-// implicitly assume a.size()==b.size()
-{
-    NormalizedPolytet a(_a), b(_b);
-    for (auto ta=a.cbegin(), tb=b.cbegin(); ta!=a.cend(); ++ta,++tb)
-    {
-        auto result = *ta <=> *tb;
-        if (result != 0)
-            return false;
-    }
-    return true;
-}
-
 // First two tetrahedrons are implied. Each element is a subsequent tetrahedron, with the value indicating where
 // it's attached. The lower 2 bits indicate which face (can only have 3 different values, because at least 1 face
 // will always already be attached). The remaining bits indicate which tetrahedron (which can never be zero,
@@ -478,27 +426,6 @@ public:
 
 namespace std
 {
-    template<>
-    struct hash<Polytet>
-    {
-        std::size_t operator()(const Polytet &_polytet) const noexcept
-        {
-            NormalizedPolytet polytet(_polytet);
-            std::size_t seed = polytet.size();
-            for (auto t=polytet.cbegin(); t!=polytet.cend(); ++t)
-            {
-                for (auto c=t->cbegin(); c!=t->cend(); ++c)
-                {
-                    for (auto i=c->cbegin(); i!=c->cend(); ++i)
-                    {
-                        seed ^= std::hash<uint64_t>{}((uint64_t)(*i      )) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
-                        seed ^= std::hash<uint64_t>{}((uint64_t)(*i >> 64)) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
-                    }
-                }
-            }
-            return seed;
-        }
-    };
     template<>
     struct hash<CompressedPolytet>
     {
