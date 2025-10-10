@@ -498,12 +498,12 @@ public:
             vertexMap2[3] = tetrahedronFaces[attachedFace][1];
             vertexMap2[2] = tetrahedronFaces[attachedFace][2];
             vertexMap2[0] = tetrahedronFaces[attachedFace][3];
-            if (faceNum == 3)
+            /*if (faceNum == 3)
             {
                 int tmp = vertexMap2[3];
                 vertexMap2[3] = vertexMap2[2];
                 vertexMap2[2] = tmp;
-            }
+            }*/
             append(polytet, *attachedTet, vertexMap2, rotation);
         }
     }
@@ -603,7 +603,7 @@ int main(int argc, char *argv[])
             }
 
             Tet &newTet = polytet[tetCount - 1];
-            for (int tetNumToAttachTo = 1; tetNumToAttachTo < tetCount-1; tetNumToAttachTo++)
+            for (int tetNumToAttachTo = 0; tetNumToAttachTo < tetCount-1; tetNumToAttachTo++)
             {
                 Tet &tetToAttachTo = polytet[tetNumToAttachTo];
                 for (int faceNum=0; faceNum<3; faceNum++) // skip last face because it's always already attached
@@ -626,12 +626,11 @@ int main(int argc, char *argv[])
                         bool haveRunningLeast = false;
                         CompressedPolytet runningLeastPolytet;
 
-                        int vertexMap[4] = {0, 1, 2, 3};
                         Tet *t = &polytet[1];
-                        for (int i=1; i<tetCount; i++)
+                        for (int i=0; i<tetCount; i++)
                         {
                             int attachedFace;
-                            if (i > 1)
+                            int vertexMap[4];
                             {
                                 Tet &singlyAttachedTet = polytet[i];
                                 for (int j=0; j<3; j++)
@@ -641,17 +640,18 @@ int main(int argc, char *argv[])
                                 attachedFace = 0;
                                 while (t->faceAttached[attachedFace] != &singlyAttachedTet)
                                     attachedFace++;
-                                static int vertexMapTable[3][4] =
+                                static int vertexMapTable[4][4] =
                                 {
                                     {3, 0, 2, 1},
                                     {2, 0, 1, 3},
                                     {1, 0, 3, 2},
+                                    {0, 1, 2, 3},
                                 };
                                 memcpy(vertexMap, vertexMapTable[attachedFace], sizeof(vertexMap));
                             }
                             for (int rotationStep=0; rotationStep<3; rotationStep++)
                             {
-                                polytet.resetIndexing(i > 1 ? i : 0);
+                                polytet.resetIndexing(i);
                                 CompressedPolytet newRotatedPolytet;
                                 newRotatedPolytet.reserve(tetCount - 2);
                                 newRotatedPolytet.append(polytet, *t, vertexMap, rotationStep);
