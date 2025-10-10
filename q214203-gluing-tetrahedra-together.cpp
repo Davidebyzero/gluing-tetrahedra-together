@@ -24,9 +24,37 @@ auto startTime = std::chrono::steady_clock::now();
 
 typedef uint8_t TetIndex;
 typedef uint8_t TetIndexFace; // lowest 2 bits are used for a face index
+
+#ifdef USE_GMP
+class Tetrahedron
+{
+public:
+    mpz_t t[4][3];
+    Tetrahedron(const Tetrahedron &_t) : Tetrahedron()
+    {
+        for (int p=0; p<4; p++)
+            for (int d=0; d<3; d++)
+                mpz_set(t[p][d], _t.t[p][d]);
+    }
+    Tetrahedron()
+    {
+        for (int p=0; p<4; p++)
+            for (int d=0; d<3; d++)
+                mpz_init(t[p][d]);
+    }
+    ~Tetrahedron()
+    {
+        for (int p=0; p<4; p++)
+            for (int d=0; d<3; d++)
+                mpz_clear(t[p][d]);
+    }
+};
+#else
 typedef __int128 Coord;
 typedef std::array<Coord, 3> Coord3;
 typedef std::array<Coord3, 4> Tetrahedron;
+#endif
+
 class Tet
 {
     void initFaces()
@@ -112,35 +140,22 @@ Coord dot(const Coord3 &a, const Coord3 &b)
 }
 #endif
 
-#ifdef USE_GMP
-void mpz_set_int128(mpz_t &dst, const __int128 &src)
-{
-    __int128 abssrc = src < 0 ? -src : src;
-    mpz_import(dst, 2, -1, 8, 0, 0, &abssrc);
-    if (src < 0)
-        mpz_neg(dst, dst);
-}
-#endif
-
 class TetrahedronOverlap
 {
+    const Tetrahedron *a, *b;
+public:
+    void setA(const Tetrahedron &x) {a = &x;}
+    void setB(const Tetrahedron &x) {b = &x;}
 #ifdef USE_GMP
+private:
     mpz_t intersectNumerator, intersectDenominator, uNumerator, vNumerator, uvDenominator, uvNumeratorSum;
     mpz_t center[3], normal[3], tmp[3], p0p1[3], intersectionPoint[3], delta[3], edge1[3], edge2[3];
-    mpz_t a[4][3];
-    mpz_t b[4][3];
     mpz_t triangle[3][3];
-    void setTetrahedron(mpz_t dst[4][3], const Tetrahedron &src)
+    void dot(mpz_t &result, const mpz_t _a[3], const mpz_t _b[3])
     {
-        for (int p=0; p<4; p++)
-            for (int d=0; d<3; d++)
-                mpz_set_int128(dst[p][d], src[p][d]);
-    }
-    void dot(mpz_t &result, const mpz_t a[3], const mpz_t b[3])
-    {
-        mpz_mul   (result, a[0], b[0]);
-        mpz_addmul(result, a[1], b[1]);
-        mpz_addmul(result, a[2], b[2]);
+        mpz_mul   (result, _a[0], _b[0]);
+        mpz_addmul(result, _a[1], _b[1]);
+        mpz_addmul(result, _a[2], _b[2]);
     }
 public:
     TetrahedronOverlap()
@@ -156,14 +171,6 @@ public:
             mpz_init(delta[d]);
             mpz_init(edge1[d]);
             mpz_init(edge2[d]);
-        }
-        for (int p=0; p<4; p++)
-        {
-            for (int d=0; d<3; d++)
-            {
-                mpz_init(a[p][d]);
-                mpz_init(b[p][d]);
-            }
         }
         for (int p=0; p<3; p++)
             for (int d=0; d<3; d++)
@@ -183,20 +190,10 @@ public:
             mpz_clear(edge1[d]);
             mpz_clear(edge2[d]);
         }
-        for (int p=0; p<4; p++)
-        {
-            for (int d=0; d<3; d++)
-            {
-                mpz_clear(a[p][d]);
-                mpz_clear(b[p][d]);
-            }
-        }
         for (int p=0; p<3; p++)
             for (int d=0; d<3; d++)
                 mpz_clear(triangle[p][d]);
     }
-    void setA(const Tetrahedron &x) {setTetrahedron(a, x);}
-    void setB(const Tetrahedron &x) {setTetrahedron(b, x);}
     bool operator()()
     {
         // Take advantage of the fact that the two tetrahedrons are regular and congruent, and
@@ -204,14 +201,14 @@ public:
         // Don't count it if only the endpoint of an edge intersects.
         for (int edgeNum=0; edgeNum<6; edgeNum++)
         {
-            const mpz_t *p0 = a[tetrahedronEdges[edgeNum][0]];
-            const mpz_t *p1 = a[tetrahedronEdges[edgeNum][1]];
+            const mpz_t *p0 = a->t[tetrahedronEdges[edgeNum][0]];
+            const mpz_t *p1 = a->t[tetrahedronEdges[edgeNum][1]];
             for (int faceNum=0; faceNum<4; faceNum++)
             {
-                mpz_t *normalizedTetrahedron[4][3]; // first 3 points are the face, and the 4th point is for calculating the normal
+                const mpz_t *normalizedTetrahedron[4][3]; // first 3 points are the face, and the 4th point is for calculating the normal
                 for (int i=0; i<4; i++)
                     for (int d=0; d<3; d++)
-                        normalizedTetrahedron[i][d] = &b[tetrahedronFaces[faceNum][i]][d];
+                        normalizedTetrahedron[i][d] = &b->t[tetrahedronFaces[faceNum][i]][d];
                 // Center coordinates will be multiplied by 3 compared to original coordinates.
                 // Get center of face by averaging its vertices' coordinates; the
                 // division by 3 is implied by omitting the multiplication by 3.
@@ -283,10 +280,7 @@ public:
         return false;
     }
 #else
-    const Tetrahedron *a, *b;
 public:
-    void setA(const Tetrahedron &x) {a = &x;}
-    void setB(const Tetrahedron &x) {b = &x;}
     bool operator()()
     {
         // Take advantage of the fact that the two tetrahedrons are regular and congruent, and
@@ -354,6 +348,22 @@ public:
 
 void attachNewTet(Tet &t, Tet &tetToAttachTo, const int faceNum)
 {
+#ifdef USE_GMP
+    mpz_t *newVertex = t.t.t[0];
+    // Get center of face by averaging its vertices' coordinates.
+    for (int d=0; d<3; d++)
+        mpz_set(newVertex[d], tetToAttachTo.t.t[tetrahedronFaces[faceNum][0]][d]);
+    for (int p=1; p<3; p++)
+        for (int d=0; d<3; d++)
+            mpz_add(newVertex[d], newVertex[d], tetToAttachTo.t.t[tetrahedronFaces[faceNum][p]][d]);
+    // Finalize the new vertex
+    for (int d=0; d<3; d++)
+    {
+        mpz_div_ui(newVertex[d], newVertex[d], 3);
+        mpz_mul_ui(newVertex[d], newVertex[d], 2);
+        mpz_sub   (newVertex[d], newVertex[d], tetToAttachTo.t.t[3 - faceNum][d]);
+    }
+#else
     Coord3 &newVertex = t.t[0];
     newVertex = {{0, 0, 0}};
     // Get center of face by averaging its vertices' coordinates.
@@ -367,12 +377,17 @@ void attachNewTet(Tet &t, Tet &tetToAttachTo, const int faceNum)
     // Finalize the new vertex
     for (int d=0; d<3; d++)
         newVertex[d] = newVertex[d]/3 * 2 - tetToAttachTo.t[3 - faceNum][d];
+#endif
     // Copy the other vertices
     for (int p=0; p<3; p++)
     {
         int p1 = tetrahedronFaces[faceNum][p];
         for (int d=0; d<3; d++)
+#ifdef USE_GMP
+            mpz_set(t.t.t[1+p][d], tetToAttachTo.t.t[p1][d]);
+#else
             t.t[1+p][d] = tetToAttachTo.t[p1][d];
+#endif
     }
     t.faceAttached[0] = NULL;
     t.faceAttached[1] = NULL;
@@ -441,6 +456,17 @@ namespace std
 
 int main(int argc, char *argv[])
 {
+#ifdef USE_GMP
+    Tetrahedron start;
+    for (int d=0; d<3; d++)
+    {
+        mpz_set_si(start.t[0][d], -9);
+        for (int p=1; p<4; p++)
+            mpz_set_si(start.t[p][d], 9);
+    }
+    for (int p=1; p<4; p++)
+        mpz_set_si(start.t[p][p-1], -9);
+#else
     static Tetrahedron start =
     {{
         {{-9,-9,-9}},
@@ -448,6 +474,7 @@ int main(int argc, char *argv[])
         {{ 9,-9, 9}},
         {{ 9, 9,-9}}
     }};
+#endif
 
     TetrahedronOverlap overlap;
 
@@ -472,7 +499,7 @@ int main(int argc, char *argv[])
             continue;
         /*if (tetCount > 6)
             break;*/
-
+        
         Polytet polytet;
         polytet.reserve(tetCount); // Important, to ensure pointers don't change
         Tet &t0    = polytet.emplace_back(start);
@@ -582,7 +609,11 @@ int main(int argc, char *argv[])
 
         for (int p=0; p<4; p++)
             for (int d=0; d<3; d++)
+#ifdef USE_GMP
+                mpz_mul_ui(start.t[p][d], start.t[p][d], 3);
+#else
                 start[p][d] *= 3;
+#endif
     }
 	return 0;
 }
