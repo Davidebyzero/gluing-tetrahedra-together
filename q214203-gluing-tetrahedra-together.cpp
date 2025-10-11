@@ -493,7 +493,8 @@ int main(int argc, char *argv[])
 #endif
 
     TetrahedronOverlap overlap;
-    
+
+    std::cerr << "Allocating " << MEMORY_POOL_SIZE * sizeof(TetIndexFace) << " bytes" << std::endl;
     TetIndexFace *polytetPool = new TetIndexFace[MEMORY_POOL_SIZE];
     TetIndexFace *polytetPoolHead = polytetPool;
     TetIndexFace *polytetPoolTail = polytetPool + MEMORY_POOL_SIZE;
@@ -529,8 +530,8 @@ int main(int argc, char *argv[])
         const int    polytetsCompressedSize = tetCount - 3;
         const int newPolytetsCompressedSize = tetCount - 2;
 
-        auto *newPolytets = new std::unordered_set<TetIndexFace *, MyHash, MyEq>(polytets->size()*11/2, MyHash{newPolytetsCompressedSize}, MyEq{newPolytetsCompressedSize});
-        newPolytets->max_load_factor(5);
+        auto *newPolytets = new std::unordered_set<TetIndexFace *, MyHash, MyEq>(polytets->size()*2, MyHash{newPolytetsCompressedSize}, MyEq{newPolytetsCompressedSize});
+        newPolytets->max_load_factor(6);
         polytet.resize(tetCount);
         for (auto baseCompressedPolytet=polytets->cbegin(); baseCompressedPolytet!=polytets->cend(); ++baseCompressedPolytet)
         {
@@ -615,6 +616,12 @@ int main(int argc, char *argv[])
                         newPolytetInPool = polytetPoolHead;
                         polytetPoolHead += newPolytetsCompressedSize;
                     }
+                    if (polytetPoolHead > polytetPoolTail)
+                    {
+                        currentTime = std::chrono::steady_clock::now();
+                        std::cerr << "Out of memory [" << std::chrono::duration_cast<std::chrono::milliseconds>(currentTime - startTime).count() << " ms]" << std::endl;
+                        exit(-1);
+                    }
                     memcpy(newPolytetInPool, runningLeastPolytet.data(), newPolytetsCompressedSize * sizeof(TetIndexFace));
 
                     if (auto [insertedItem, wasInserted] = newPolytets->emplace(newPolytetInPool); wasInserted)
@@ -630,14 +637,16 @@ int main(int argc, char *argv[])
                             if (overlap())
                             {
                                 newPolytets->erase(insertedItem);
-                                if (headToTail)
-                                    polytetPoolTail += newPolytetsCompressedSize;
-                                else
-                                    polytetPoolHead -= newPolytetsCompressedSize;
                                 break;
                             }
                         }
+                        goto keepNewPolytet;
                     }
+                    if (headToTail)
+                        polytetPoolTail += newPolytetsCompressedSize;
+                    else
+                        polytetPoolHead -= newPolytetsCompressedSize;
+                keepNewPolytet:
                     tetToAttachTo.faceAttached[faceNum] = NULL;
                 }
             }
