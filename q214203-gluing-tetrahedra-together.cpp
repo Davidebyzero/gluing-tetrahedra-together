@@ -1,13 +1,8 @@
 #include <stdio.h>
 #include <iostream>
 #include <string.h>
-#include <cstdint>
-#include <cinttypes>
 #include <array>
-#include <algorithm>
 #include <vector>
-#include <list>
-#include <functional>
 #include <unordered_set>
 #include <chrono>
 
