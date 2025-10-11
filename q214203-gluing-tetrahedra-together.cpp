@@ -6,8 +6,9 @@
 #include <unordered_set>
 #include <chrono>
 
-//#define USE_GMP
-#define MEMORY_POOL_SIZE (16ULL * 1024*1024*1024) // in sizeof(TetIndexFace) units, i.e. bytes
+#define USE_GMP
+//#define MEMORY_POOL_SIZE (31ULL * 1024*1024*1024) // in sizeof(TetIndexFace) units, i.e. bytes
+#define MEMORY_POOL_SIZE (512ULL * 1024*1024) // in sizeof(TetIndexFace) units, i.e. bytes
 
 #ifdef USE_GMP
 #include <gmp.h>
@@ -435,36 +436,21 @@ public:
     }
 };
 
-/*namespace std
-{
-    template<>
-    struct hash<CompressedPolytet>
-    {
-        uint32_t operator()(const CompressedPolytet &polytet) const noexcept
-        {
-            uint32_t seed = polytet.size();
-            for (auto i=polytet.cbegin(); i!=polytet.cend(); ++i)
-                seed ^= std::hash<uint32_t>{}(*i) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
-            return seed;
-        }
-    };
-};*/
-
 struct MyHash
 {
     const int size;
-    std::uint32_t operator()(const TetIndexFace *k) const noexcept
+    std::size_t operator()(const TetIndexFace *k) const noexcept
     {
-        uint32_t seed = 0;
+        size_t seed = 0;
         for (int i=0; i<size; i++)
-            seed ^= std::hash<uint32_t>{}(k[i]) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+            seed ^= std::hash<size_t>{}(k[i]) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
         return seed;
     }
 };
 struct MyEq
 {
     const int size;
-    std::uint32_t operator()(const TetIndexFace *a, const TetIndexFace *b) const noexcept
+    bool operator()(const TetIndexFace *a, const TetIndexFace *b) const noexcept
     {
         return memcmp(a, b, size * sizeof(TetIndexFace)) == 0;
     }
@@ -510,7 +496,7 @@ int main(int argc, char *argv[])
     {
         auto currentTime = std::chrono::steady_clock::now();
         size_t polytetCount = polytets->size();
-        std::cout << tetCount << ": " << polytetCount << " [" << std::chrono::duration_cast<std::chrono::milliseconds>(currentTime - startTime).count() << " ms]" << std::endl;
+        std::cout << tetCount << ": " << polytetCount << " [" << std::chrono::duration_cast<std::chrono::milliseconds>(currentTime - startTime).count() << " ms] Bucket count: " << polytets->bucket_count() << std::endl;
         if (prevPolytetCount > polytetCount)
         {
             std::cerr << "Quit due to apparent overflow" << std::endl;
@@ -530,7 +516,7 @@ int main(int argc, char *argv[])
         const int    polytetsCompressedSize = tetCount - 3;
         const int newPolytetsCompressedSize = tetCount - 2;
 
-        auto *newPolytets = new std::unordered_set<TetIndexFace *, MyHash, MyEq>(polytets->size()*2, MyHash{newPolytetsCompressedSize}, MyEq{newPolytetsCompressedSize});
+        auto *newPolytets = new std::unordered_set<TetIndexFace *, MyHash, MyEq>(polytets->size(), MyHash{newPolytetsCompressedSize}, MyEq{newPolytetsCompressedSize});
         newPolytets->max_load_factor(6);
         polytet.resize(tetCount);
         for (auto baseCompressedPolytet=polytets->cbegin(); baseCompressedPolytet!=polytets->cend(); ++baseCompressedPolytet)
