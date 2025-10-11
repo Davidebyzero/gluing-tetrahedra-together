@@ -7,6 +7,7 @@
 #include <chrono>
 
 //#define USE_GMP
+#define MEMORY_POOL_SIZE (16ULL * 1024*1024*1024) // in sizeof(TetIndexFace) units, i.e. bytes
 
 #ifdef USE_GMP
 #include <gmp.h>
@@ -434,19 +435,39 @@ public:
     }
 };
 
-namespace std
+/*namespace std
 {
     template<>
     struct hash<CompressedPolytet>
     {
-        std::size_t operator()(const CompressedPolytet &polytet) const noexcept
+        uint32_t operator()(const CompressedPolytet &polytet) const noexcept
         {
-            std::size_t seed = polytet.size();
+            uint32_t seed = polytet.size();
             for (auto i=polytet.cbegin(); i!=polytet.cend(); ++i)
                 seed ^= std::hash<uint32_t>{}(*i) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
             return seed;
         }
     };
+};*/
+
+struct MyHash
+{
+    const int size;
+    std::uint32_t operator()(const TetIndexFace *k) const noexcept
+    {
+        uint32_t seed = 0;
+        for (int i=0; i<size; i++)
+            seed ^= std::hash<uint32_t>{}(k[i]) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+        return seed;
+    }
+};
+struct MyEq
+{
+    const int size;
+    std::uint32_t operator()(const TetIndexFace *a, const TetIndexFace *b) const noexcept
+    {
+        return memcmp(a, b, size * sizeof(TetIndexFace)) == 0;
+    }
 };
 
 int main(int argc, char *argv[])
@@ -472,9 +493,14 @@ int main(int argc, char *argv[])
 #endif
 
     TetrahedronOverlap overlap;
+    
+    TetIndexFace *polytetPool = new TetIndexFace[MEMORY_POOL_SIZE];
+    TetIndexFace *polytetPoolHead = polytetPool;
+    TetIndexFace *polytetPoolTail = polytetPool + MEMORY_POOL_SIZE;
+    bool headToTail = false;
 
-    auto *polytets = new std::unordered_set<CompressedPolytet>;
-    polytets->insert(CompressedPolytet()); // add empty vector as the starter polytet (meaning it has two tetrahedrons)
+    auto *polytets = new std::unordered_set<TetIndexFace *, MyHash, MyEq>(0, MyHash{0}, MyEq{0});
+    polytets->insert(NULL); // add empty vector as the starter polytet (meaning it has two tetrahedrons)
     size_t prevPolytetCount = 0;
     
     size_t blahNum = 0;
@@ -500,15 +526,19 @@ int main(int argc, char *argv[])
         Tet &t0    = polytet.emplace_back(start);
         attachNewTet(polytet.emplace_back(), t0, 3);
 
-        auto *newPolytets = new std::unordered_set<CompressedPolytet>;
+        const int    polytetsCompressedSize = tetCount - 3;
+        const int newPolytetsCompressedSize = tetCount - 2;
+
+        auto *newPolytets = new std::unordered_set<TetIndexFace *, MyHash, MyEq>(polytets->size()*11/2, MyHash{newPolytetsCompressedSize}, MyEq{newPolytetsCompressedSize});
+        newPolytets->max_load_factor(5);
         polytet.resize(tetCount);
-        for (auto basePolytet=polytets->cbegin(); basePolytet!=polytets->cend(); ++basePolytet)
+        for (auto baseCompressedPolytet=polytets->cbegin(); baseCompressedPolytet!=polytets->cend(); ++baseCompressedPolytet)
         {
             int tetNumToUncompress = 2;
-            for (auto elementToUncompress=basePolytet->cbegin(); elementToUncompress!=basePolytet->cend(); ++elementToUncompress)
+            for (int i=0; i<polytetsCompressedSize; i++)
             {
-                int faceNum          = *elementToUncompress & 3;
-                int tetNumToAttachTo = *elementToUncompress >> 2;
+                int faceNum          = (*baseCompressedPolytet)[i] & 3;
+                int tetNumToAttachTo = (*baseCompressedPolytet)[i] >> 2;
                 Tet &tetToAttachTo = polytet[tetNumToAttachTo];
                 attachNewTet(polytet[tetNumToUncompress++], tetToAttachTo, faceNum);
             }
@@ -558,7 +588,7 @@ int main(int argc, char *argv[])
                         {
                             polytet.resetIndexing(i);
                             CompressedPolytet newRotatedPolytet;
-                            newRotatedPolytet.reserve(tetCount - 2);
+                            newRotatedPolytet.reserve(newPolytetsCompressedSize);
                             newRotatedPolytet.append(polytet, *t, vertexMap, rotationStep);
 
                             // Update the running "least" rotation
@@ -573,7 +603,21 @@ int main(int argc, char *argv[])
                         }
                     skipThisTet:;
                     }
-                    if (auto [insertedItem, wasInserted] = newPolytets->emplace(runningLeastPolytet); wasInserted)
+                    
+                    TetIndexFace *newPolytetInPool;
+                    if (headToTail)
+                    {
+                        polytetPoolTail -= newPolytetsCompressedSize;
+                        newPolytetInPool = polytetPoolTail;
+                    }
+                    else
+                    {
+                        newPolytetInPool = polytetPoolHead;
+                        polytetPoolHead += newPolytetsCompressedSize;
+                    }
+                    memcpy(newPolytetInPool, runningLeastPolytet.data(), newPolytetsCompressedSize * sizeof(TetIndexFace));
+
+                    if (auto [insertedItem, wasInserted] = newPolytets->emplace(newPolytetInPool); wasInserted)
                     {
                         // Check for overlap between this newly attached tetrahedron and the existing ones,
                         // and defer this until after the deduplication, to save a lot of time
@@ -586,6 +630,10 @@ int main(int argc, char *argv[])
                             if (overlap())
                             {
                                 newPolytets->erase(insertedItem);
+                                if (headToTail)
+                                    polytetPoolTail += newPolytetsCompressedSize;
+                                else
+                                    polytetPoolHead -= newPolytetsCompressedSize;
                                 break;
                             }
                         }
@@ -602,6 +650,12 @@ int main(int argc, char *argv[])
         delete polytets;
         polytets = newPolytets;
 
+        if (headToTail)
+            polytetPoolHead = polytetPool;
+        else
+            polytetPoolTail = polytetPool + MEMORY_POOL_SIZE;
+        headToTail ^= true;
+
         for (int p=0; p<4; p++)
             for (int d=0; d<3; d++)
 #ifdef USE_GMP
@@ -610,5 +664,8 @@ int main(int argc, char *argv[])
                 start[p][d] *= 3;
 #endif
     }
+
+    delete [] polytetPool;
+
 	return 0;
 }
