@@ -7,7 +7,7 @@
 
 //#define USE_GMP
 #define MEMORY_POOL_INITIAL_SIZE (64 * 1024)  // in bytes
-#define MEMORY_POOL_GROW_RATIO 1/16  // what proportion of the memory size to grow it by when more space is needed
+#define MEMORY_POOL_GROW_RATIO 1/32  // what proportion of the memory size to grow it by when more space is needed
 #define HASH_TABLE_RATIO 6
 //#define KEEP_GOING
 
