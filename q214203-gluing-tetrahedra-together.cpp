@@ -6,7 +6,7 @@
 #include <chrono>
 
 //#define USE_GMP
-#define MEMORY_POOL_INITIAL_SIZE (64 * 1024*1024)  // in bytes
+#define MEMORY_POOL_INITIAL_SIZE (64 * 1024)  // in bytes
 #define MEMORY_POOL_GROW_RATIO 1/5  // what proportion of the memory size to grow it by when more space is needed
 //#define KEEP_GOING
 
@@ -507,17 +507,21 @@ int main(int argc, char *argv[])
             break;
 #endif
 
-        TetIndexFace *basePolytetTable = (TetIndexFace*)pool;                                             // must be duplicate of identical statement below
         int basePolytetCompressedSize = tetCount - 3;
-        HashIndex *hashTable = (HashIndex*)(basePolytetTable + basePolytetCompressedSize * polytetCount); // must be duplicate of identical statement below
         size_t hashTableSize = polytetCount * 6;
-        if ((uint8_t*)(hashTable + hashTableSize) - (uint8_t*)pool > poolSize)
+        TetIndexFace *basePolytetTable;
+        HashIndex *hashTable;
+        void *polytetTable;
+        for (;;)
         {
-            std::cerr << "Error: Initial memory pool size too small" << std::endl;
-            exit(-1);
+            basePolytetTable = (TetIndexFace*)pool;
+            hashTable = (HashIndex*)(basePolytetTable + basePolytetCompressedSize * polytetCount);
+            polytetTable = hashTable + hashTableSize;
+            if ((uint8_t*)polytetTable - (uint8_t*)pool <= poolSize)
+                break;
+            pool = realloc(pool, poolSize += poolSize * MEMORY_POOL_GROW_RATIO);
         }
         memset(hashTable, 0, hashTableSize * sizeof(HashIndex));
-        void *polytetTable = hashTable + hashTableSize;                                                   // must be duplicate of identical statement below
         const int newPolytetsCompressedSize = tetCount - 2;
         const int polytetTableElementSize = newPolytetsCompressedSize * sizeof(TetIndexFace) + sizeof(HashIndex);
         size_t newPolytetCount = 0;
@@ -627,13 +631,16 @@ int main(int argc, char *argv[])
                             goto skipDueToOverlap;
                     }
                     // No overlap found, so add runningLeastPolytet to hash table
-                    if ((uint8_t*)entry + newPolytetsCompressedSize + polytetTableElementSize - (uint8_t*)pool > poolSize)
+                    if ((uint8_t*)entry + polytetTableElementSize - (uint8_t*)pool > poolSize)
                     {
-                        pool = realloc(pool, poolSize += poolSize * MEMORY_POOL_GROW_RATIO);
-                        // the below statements must be duplicates of their identical statements above (but as assignments rather than declarations, of course)
-                        basePolytetTable = (TetIndexFace*)pool;
-                        hashTable = (HashIndex*)(basePolytetTable + basePolytetCompressedSize * polytetCount);
-                        polytetTable = hashTable + hashTableSize;
+                        void *newPool = realloc(pool, poolSize += poolSize * MEMORY_POOL_GROW_RATIO);
+                        ptrdiff_t diff = (uint8_t*)newPool - (uint8_t*)pool;
+                        pool = newPool;
+                        (uint8_t*&)basePolytetTable += diff;
+                        (uint8_t*&)hashTable        += diff;
+                        (uint8_t*&)polytetTable     += diff;
+                        (uint8_t*&)index            += diff;
+                        (uint8_t*&)entry            += diff;
                     }
                     memcpy(entry, runningLeastPolytet.data(), newPolytetsCompressedSize * sizeof(TetIndexFace));
                     *index = ++newPolytetCount;
