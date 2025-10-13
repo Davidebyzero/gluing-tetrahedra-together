@@ -137,10 +137,11 @@ Coord dot(const Coord3 &a, const Coord3 &b)
 
 class TetrahedronOverlap
 {
-    const Tetrahedron *a, *b;
+    const Tetrahedron *a;
+    const Tet         *b;
 public:
     void setA(const Tetrahedron &x) {a = &x;}
-    void setB(const Tetrahedron &x) {b = &x;}
+    void setB(const Tet         &x) {b = &x;}
 #ifdef USE_GMP
 private:
     mpz_t intersectNumerator, intersectDenominator, uNumerator, vNumerator, uvDenominator, uvNumeratorSum;
@@ -200,10 +201,15 @@ public:
             const mpz_t *p1 = a->t[tetrahedronEdges[edgeNum][1]];
             for (int faceNum=0; faceNum<4; faceNum++)
             {
+                // For speed, process only one out of every pair of attached faces (which share the exact same 3 vertices).
+                // This will still process the very first attached face twice, since that is a face[3] attached to another face[3],
+                // but it's probably not worth the extra machinery that would be necessary to special-case that.
+                if (faceNum!=3 && b->faceAttached[faceNum])
+                    continue;
                 const mpz_t *normalizedTetrahedron[4][3]; // first 3 points are the face, and the 4th point is for calculating the normal
                 for (int i=0; i<4; i++)
                     for (int d=0; d<3; d++)
-                        normalizedTetrahedron[i][d] = &b->t[tetrahedronFaces[faceNum][i]][d];
+                        normalizedTetrahedron[i][d] = &b->t.t[tetrahedronFaces[faceNum][i]][d];
                 // Center coordinates will be multiplied by 3 compared to original coordinates.
                 // Get center of face by averaging its vertices' coordinates; the
                 // division by 3 is implied by omitting the multiplication by 3.
@@ -287,9 +293,14 @@ public:
             Coord3 p1 = (*a)[tetrahedronEdges[edgeNum][1]];
             for (int faceNum=0; faceNum<4; faceNum++)
             {
+                // For speed, process only one out of every pair of attached faces (which share the exact same 3 vertices).
+                // This will still process the very first attached face twice, since that is a face[3] attached to another face[3],
+                // but it's probably not worth the extra machinery that would be necessary to special-case that.
+                if (faceNum!=3 && b->faceAttached[faceNum])
+                    continue;
                 Tetrahedron normalizedTetrahedron; // first 3 points are the face, and the 4th point is for calculating the normal
                 for (int i=0; i<4; i++)
-                    normalizedTetrahedron[i] = (*b)[tetrahedronFaces[faceNum][i]];
+                    normalizedTetrahedron[i] = b->t[tetrahedronFaces[faceNum][i]];
                 Coord3 center = {{0, 0, 0}}; // multiplied by 3 compared to original coordinates
                 // Get center of face by averaging its vertices' coordinates; the
                 // division by 3 is implied by omitting the multiplication by 3.
@@ -582,7 +593,7 @@ int main(int argc, char *argv[])
                         {
                             if (&*tetCheckIntersection == &tetToAttachTo || &*tetCheckIntersection == &newTet)
                                 continue; // skip this check for speed (it'll always be false anyway)
-                            overlap.setB(tetCheckIntersection->t);
+                            overlap.setB(*tetCheckIntersection);
                             if (overlap())
                             {
                                 newPolytets->erase(insertedItem);
