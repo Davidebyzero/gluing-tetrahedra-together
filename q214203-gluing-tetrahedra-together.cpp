@@ -490,11 +490,15 @@ int main(int argc, char *argv[])
 
     size_t prevPolytetCount = 0;
     size_t polytetCount = 1;
+    size_t memoryUsage = 0;
     
     for (int tetCount=1;;)
     {
         auto currentTime = std::chrono::steady_clock::now();
-        std::cout << tetCount << ": " << polytetCount << " [" << std::chrono::duration_cast<std::chrono::milliseconds>(currentTime - startTime).count() << " ms]" << std::endl;
+        std::cout << tetCount << ": " << polytetCount << " [" << std::chrono::duration_cast<std::chrono::milliseconds>(currentTime - startTime).count() << " ms";
+        if (memoryUsage)
+            std::cout << ", " << memoryUsage << " bytes";
+        std::cout << "]" << std::endl;
         if (prevPolytetCount > polytetCount)
         {
             std::cerr << "Quit due to apparent overflow" << std::endl;
@@ -660,6 +664,8 @@ int main(int argc, char *argv[])
             polytet[1].faceAttached[1] = NULL;
             polytet[1].faceAttached[2] = NULL;
         }
+
+        memoryUsage = (uint8_t*)polytetTable + newPolytetCount * polytetTableElementSize - (uint8_t*)pool;
 
         polytetCount = newPolytetCount;
         for (size_t i=0; i<polytetCount; i++)
