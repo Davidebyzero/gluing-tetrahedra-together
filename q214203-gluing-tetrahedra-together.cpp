@@ -667,6 +667,12 @@ int main(int argc, char *argv[])
                 basePolytetTable            + i *                          newPolytetsCompressedSize * sizeof(TetIndexFace),
                 (TetIndexFace*)polytetTable + i * polytetTableElementSize, newPolytetsCompressedSize * sizeof(TetIndexFace));
 
+        char filename[100];
+        sprintf(filename, "polytets_compressed_term_%d.bin", tetCount);
+        FILE *f = fopen(filename, "wb");
+        fwrite(basePolytetTable, newPolytetsCompressedSize * sizeof(TetIndexFace) * polytetCount, 1, f);
+        fclose(f);
+
         for (int p=0; p<4; p++)
             for (int d=0; d<3; d++)
 #ifdef USE_GMP
