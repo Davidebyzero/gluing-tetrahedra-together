@@ -687,5 +687,7 @@ int main(int argc, char *argv[])
                 start[p][d] *= 3;
 #endif
     }
+
+    free(pool);
 	return 0;
 }
