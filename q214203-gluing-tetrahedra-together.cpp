@@ -7,7 +7,8 @@
 
 //#define USE_GMP
 #define MEMORY_POOL_INITIAL_SIZE (64 * 1024)  // in bytes
-#define MEMORY_POOL_GROW_RATIO 1/5  // what proportion of the memory size to grow it by when more space is needed
+#define MEMORY_POOL_GROW_RATIO 1/16  // what proportion of the memory size to grow it by when more space is needed
+#define HASH_TABLE_RATIO 6
 //#define KEEP_GOING
 
 #ifdef USE_GMP
@@ -508,17 +509,19 @@ int main(int argc, char *argv[])
 #endif
 
         int basePolytetCompressedSize = tetCount - 3;
-        size_t hashTableSize = polytetCount * 6;
+        size_t hashTableSize = polytetCount * HASH_TABLE_RATIO;
         TetIndexFace *basePolytetTable;
         HashIndex *hashTable;
         void *polytetTable;
         for (;;)
         {
             basePolytetTable = (TetIndexFace*)pool;
-            hashTable = (HashIndex*)(basePolytetTable + basePolytetCompressedSize * polytetCount);
+            size_t basePolytetTableSize = basePolytetCompressedSize * polytetCount;
+            hashTable = (HashIndex*)(basePolytetTable + basePolytetTableSize);
             polytetTable = hashTable + hashTableSize;
             if ((uint8_t*)polytetTable - (uint8_t*)pool <= poolSize)
                 break;
+            pool = realloc(pool, basePolytetTableSize); // so that if the below realloc() results in a move, only what memory actually needs to be moved will be moved
             pool = realloc(pool, poolSize += poolSize * MEMORY_POOL_GROW_RATIO);
         }
         memset(hashTable, 0, hashTableSize * sizeof(HashIndex));
