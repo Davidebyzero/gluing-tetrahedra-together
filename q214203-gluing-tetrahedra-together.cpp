@@ -489,7 +489,6 @@ int main(int argc, char *argv[])
     size_t prevPolytetCount = 0;
     
     size_t blahNum = 0;
-
     for (int tetCount=1;;)
     {
         auto currentTime = std::chrono::steady_clock::now();
