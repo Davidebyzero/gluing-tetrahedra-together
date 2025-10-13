@@ -533,7 +533,7 @@ int main(int argc, char *argv[])
         const int newPolytetsCompressedSize = tetCount - 2;
         const int polytetTableElementSize = newPolytetsCompressedSize * sizeof(TetIndexFace) + sizeof(HashIndex);
         size_t newPolytetCount = 0;
-        
+
         Polytet polytet;
         polytet.reserve(tetCount); // Important, to ensure pointers don't change
         Tet &t0    = polytet.emplace_back(start);
