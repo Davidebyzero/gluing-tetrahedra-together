@@ -6,10 +6,13 @@
 #include <chrono>
 
 //#define USE_GMP
-#define MEMORY_POOL_INITIAL_SIZE (64 * 1024)  // in bytes
+#define MEMORY_POOL_INITIAL_SIZE (64uLL * 1024)  // in bytes; if the goal is to use more than half of available RAM, this must be preallocated at full expected size
 #define MEMORY_POOL_GROW_RATIO 1/64  // what proportion of the memory size to grow it by when more space is needed
 #define HASH_TABLE_RATIO 6
 //#define KEEP_GOING
+
+#define WRITE_TO_FILES
+#define RESUME_FROM_FILE
 
 #ifdef USE_GMP
 #include <gmp.h>
@@ -19,6 +22,13 @@
 #endif
 
 auto startTime = std::chrono::steady_clock::now();
+
+void quitMemory()
+{
+    auto currentTime = std::chrono::steady_clock::now();
+    std::cerr << "Out of memory [" << std::chrono::duration_cast<std::chrono::milliseconds>(currentTime - startTime).count() << " ms]" << std::endl;
+    exit(-1);
+}
 
 typedef uint8_t TetIndex;
 typedef uint8_t TetIndexFace; // lowest 2 bits are used for a face index
@@ -461,6 +471,26 @@ public:
     }
 };
 
+#if defined(WRITE_TO_FILES) || defined(RESUME_FROM_FILE)
+const char *getCompressedPolytetFilename(int tetCount)
+{
+    static char filename[100];
+    sprintf(filename, "polytets_compressed_term_%d.bin", tetCount);
+    return filename;
+}
+#endif
+
+void mul_start_3(Tetrahedron &start)
+{
+    for (int p=0; p<4; p++)
+        for (int d=0; d<3; d++)
+#ifdef USE_GMP
+            mpz_mul_ui(start.t[p][d], start.t[p][d], 3);
+#else
+            start[p][d] *= 3;
+#endif
+}
+
 int main(int argc, char *argv[])
 {
 #ifdef USE_GMP
@@ -483,8 +513,8 @@ int main(int argc, char *argv[])
     }};
 #endif
 
-    void *pool = malloc(MEMORY_POOL_INITIAL_SIZE);
-    size_t poolSize  =  MEMORY_POOL_INITIAL_SIZE;
+    size_t poolSize;
+    void *pool;
 
     TetrahedronOverlap overlap;
 
@@ -492,7 +522,50 @@ int main(int argc, char *argv[])
     size_t polytetCount = 1;
     size_t memoryUsage = 0;
     
-    for (int tetCount=1;;)
+    int tetCount=1;
+#ifdef RESUME_FROM_FILE
+    {
+        FILE *resumeFile = NULL;
+        for (int i=3;; i++)
+        {
+            if (FILE *f = fopen(getCompressedPolytetFilename(i), "rb"))
+            {
+                if (resumeFile) fclose(resumeFile);
+                resumeFile = f;
+                tetCount = i;
+                if (i > 3)
+                    mul_start_3(start);
+            }
+            else
+                break;
+        }
+        if (!resumeFile)
+        {
+            pool = malloc(poolSize = MEMORY_POOL_INITIAL_SIZE);
+            if (!pool) quitMemory();
+        }
+        else
+        {
+            fseek(resumeFile, 0, SEEK_END);
+            size_t size = ftello64(resumeFile);
+            poolSize = size;
+            if (poolSize < MEMORY_POOL_INITIAL_SIZE)
+                poolSize = MEMORY_POOL_INITIAL_SIZE;
+            pool = malloc(poolSize);
+            if (!pool)
+            {
+                fclose(resumeFile);
+                quitMemory();
+            }
+            fseek(resumeFile, 0, SEEK_SET);
+            fread(pool, size, 1, resumeFile);
+            fclose(resumeFile);
+            polytetCount = size / (tetCount - 2);
+        }
+    }
+#endif
+    
+    for (;;)
     {
         auto currentTime = std::chrono::steady_clock::now();
         std::cout << tetCount << ": " << polytetCount << " [" << std::chrono::duration_cast<std::chrono::milliseconds>(currentTime - startTime).count() << " ms";
@@ -526,8 +599,11 @@ int main(int argc, char *argv[])
             size_t minSize = (uint8_t*)polytetTable - (uint8_t*)pool;
             if (minSize < poolSize)
                 break;
-            pool = realloc(pool, basePolytetTableSize); // so that if the below realloc() results in a move, only what memory actually needs to be moved will be moved
-            pool = realloc(pool, poolSize = minSize + minSize * MEMORY_POOL_GROW_RATIO);
+            void *newPool = realloc(pool, basePolytetTableSize); // so that if the below realloc() results in a move, only what memory actually needs to be moved will be moved
+            if (!newPool) {free(pool); quitMemory();}
+            void *newPool2 = realloc(newPool, poolSize = minSize + minSize * MEMORY_POOL_GROW_RATIO);
+            if (!newPool2) {free(newPool); quitMemory();}
+            pool = newPool2;
         }
         memset(hashTable, 0, hashTableSize * sizeof(HashIndex));
         const int newPolytetsCompressedSize = tetCount - 2;
@@ -642,6 +718,7 @@ int main(int argc, char *argv[])
                     if ((uint8_t*)entry + polytetTableElementSize - (uint8_t*)pool > poolSize)
                     {
                         void *newPool = realloc(pool, poolSize += poolSize * MEMORY_POOL_GROW_RATIO);
+                        if (!newPool) {free(pool); quitMemory();}
                         ptrdiff_t diff = (uint8_t*)newPool - (uint8_t*)pool;
                         pool = newPool;
                         (uint8_t*&)basePolytetTable += diff;
@@ -673,19 +750,13 @@ int main(int argc, char *argv[])
                 basePolytetTable            + i *                          newPolytetsCompressedSize * sizeof(TetIndexFace),
                 (TetIndexFace*)polytetTable + i * polytetTableElementSize, newPolytetsCompressedSize * sizeof(TetIndexFace));
 
-        char filename[100];
-        sprintf(filename, "polytets_compressed_term_%d.bin", tetCount);
-        FILE *f = fopen(filename, "wb");
+#ifdef WRITE_TO_FILES
+        FILE *f = fopen(getCompressedPolytetFilename(tetCount), "wb");
         fwrite(basePolytetTable, newPolytetsCompressedSize * sizeof(TetIndexFace) * polytetCount, 1, f);
         fclose(f);
-
-        for (int p=0; p<4; p++)
-            for (int d=0; d<3; d++)
-#ifdef USE_GMP
-                mpz_mul_ui(start.t[p][d], start.t[p][d], 3);
-#else
-                start[p][d] *= 3;
 #endif
+
+        mul_start_3(start);
     }
 
     free(pool);
