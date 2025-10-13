@@ -3,10 +3,12 @@
 #include <string.h>
 #include <array>
 #include <vector>
-#include <unordered_set>
 #include <chrono>
 
 //#define USE_GMP
+#define MEMORY_POOL_INITIAL_SIZE (64 * 1024*1024)  // in bytes
+#define MEMORY_POOL_GROW_RATIO 1/5  // what proportion of the memory size to grow it by when more space is needed
+//#define KEEP_GOING
 
 #ifdef USE_GMP
 #include <gmp.h>
@@ -19,6 +21,12 @@ auto startTime = std::chrono::steady_clock::now();
 
 typedef uint8_t TetIndex;
 typedef uint8_t TetIndexFace; // lowest 2 bits are used for a face index
+
+#ifdef KEEP_GOING
+typedef uint64_t HashIndex;
+#else // just large enough for tetCount==17
+typedef uint32_t HashIndex;
+#endif
 
 #ifdef USE_GMP
 class Tetrahedron
@@ -443,21 +451,13 @@ public:
             append(polytet, *attachedTet, vertexMap2, rotation);
         }
     }
-};
-
-namespace std
-{
-    template<>
-    struct hash<CompressedPolytet>
+    size_t hash() const
     {
-        std::size_t operator()(const CompressedPolytet &polytet) const noexcept
-        {
-            std::size_t seed = polytet.size();
-            for (auto i=polytet.cbegin(); i!=polytet.cend(); ++i)
-                seed ^= std::hash<uint32_t>{}(*i) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
-            return seed;
-        }
-    };
+        std::size_t seed = size();
+        for (auto i=cbegin(); i!=cend(); ++i)
+            seed ^= std::hash<uint32_t>{}(*i) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+        return seed;
+    }
 };
 
 int main(int argc, char *argv[])
@@ -482,17 +482,17 @@ int main(int argc, char *argv[])
     }};
 #endif
 
+    void *pool = malloc(MEMORY_POOL_INITIAL_SIZE);
+    size_t poolSize  =  MEMORY_POOL_INITIAL_SIZE;
+
     TetrahedronOverlap overlap;
 
-    auto *polytets = new std::unordered_set<CompressedPolytet>;
-    polytets->insert(CompressedPolytet()); // add empty vector as the starter polytet (meaning it has two tetrahedrons)
     size_t prevPolytetCount = 0;
+    size_t polytetCount = 1;
     
-    size_t blahNum = 0;
     for (int tetCount=1;;)
     {
         auto currentTime = std::chrono::steady_clock::now();
-        size_t polytetCount = polytets->size();
         std::cout << tetCount << ": " << polytetCount << " [" << std::chrono::duration_cast<std::chrono::milliseconds>(currentTime - startTime).count() << " ms]" << std::endl;
         if (prevPolytetCount > polytetCount)
         {
@@ -502,23 +502,40 @@ int main(int argc, char *argv[])
         prevPolytetCount = polytetCount;
         if (++tetCount <= 2)
             continue;
-        /*if (tetCount > 6)
-            break;*/
+#ifndef KEEP_GOING
+        if (tetCount > 17)
+            break;
+#endif
+
+        TetIndexFace *basePolytetTable = (TetIndexFace*)pool;                                             // must be duplicate of identical statement below
+        int basePolytetCompressedSize = tetCount - 3;
+        HashIndex *hashTable = (HashIndex*)(basePolytetTable + basePolytetCompressedSize * polytetCount); // must be duplicate of identical statement below
+        size_t hashTableSize = polytetCount * 6;
+        if ((uint8_t*)(hashTable + hashTableSize) - (uint8_t*)pool > poolSize)
+        {
+            std::cerr << "Error: Initial memory pool size too small" << std::endl;
+            exit(-1);
+        }
+        memset(hashTable, 0, hashTableSize * sizeof(HashIndex));
+        void *polytetTable = hashTable + hashTableSize;                                                   // must be duplicate of identical statement below
+        const int newPolytetsCompressedSize = tetCount - 2;
+        const int polytetTableElementSize = newPolytetsCompressedSize * sizeof(TetIndexFace) + sizeof(HashIndex);
+        size_t newPolytetCount = 0;
         
         Polytet polytet;
         polytet.reserve(tetCount); // Important, to ensure pointers don't change
         Tet &t0    = polytet.emplace_back(start);
         attachNewTet(polytet.emplace_back(), t0, 3);
 
-        auto *newPolytets = new std::unordered_set<CompressedPolytet>;
         polytet.resize(tetCount);
-        for (auto basePolytet=polytets->cbegin(); basePolytet!=polytets->cend(); ++basePolytet)
+        for (auto basePolytetI=0; basePolytetI<polytetCount; basePolytetI++)
         {
+            TetIndexFace *basePolytet = basePolytetTable + basePolytetI * basePolytetCompressedSize;
             int tetNumToUncompress = 2;
-            for (auto elementToUncompress=basePolytet->cbegin(); elementToUncompress!=basePolytet->cend(); ++elementToUncompress)
+            for (int elementToUncompress=0; elementToUncompress < basePolytetCompressedSize; elementToUncompress++)
             {
-                int faceNum          = *elementToUncompress & 3;
-                int tetNumToAttachTo = *elementToUncompress >> 2;
+                int faceNum          = basePolytet[elementToUncompress] & 3;
+                int tetNumToAttachTo = basePolytet[elementToUncompress] >> 2;
                 Tet &tetToAttachTo = polytet[tetNumToAttachTo];
                 attachNewTet(polytet[tetNumToUncompress++], tetToAttachTo, faceNum);
             }
@@ -568,7 +585,7 @@ int main(int argc, char *argv[])
                         {
                             polytet.resetIndexing(i);
                             CompressedPolytet newRotatedPolytet;
-                            newRotatedPolytet.reserve(tetCount - 2);
+                            newRotatedPolytet.reserve(newPolytetsCompressedSize);
                             newRotatedPolytet.append(polytet, *t, vertexMap, rotationStep);
 
                             // Update the running "least" rotation
@@ -583,23 +600,47 @@ int main(int argc, char *argv[])
                         }
                     skipThisTet:;
                     }
-                    if (auto [insertedItem, wasInserted] = newPolytets->emplace(runningLeastPolytet); wasInserted)
+
+                    HashIndex *index = &hashTable[runningLeastPolytet.hash() % hashTableSize];
+                    void *entry;
+                    for (;;)
                     {
-                        // Check for overlap between this newly attached tetrahedron and the existing ones,
-                        // and defer this until after the deduplication, to save a lot of time
-                        overlap.setA(newTet.t);
-                        for (auto tetCheckIntersection=polytet.cbegin(); tetCheckIntersection!=polytet.cend(); ++tetCheckIntersection)
+                        if (*index == 0)
                         {
-                            if (&*tetCheckIntersection == &tetToAttachTo || &*tetCheckIntersection == &newTet)
-                                continue; // skip this check for speed (it'll always be false anyway)
-                            overlap.setB(*tetCheckIntersection);
-                            if (overlap())
-                            {
-                                newPolytets->erase(insertedItem);
-                                break;
-                            }
+                            entry = (uint8_t*)polytetTable + newPolytetCount * polytetTableElementSize;
+                            break; // no duplicate of runningLeastPolytet was found in hash table
                         }
+                        entry = (uint8_t*)polytetTable + (*index - 1) * polytetTableElementSize;
+                        if (memcmp(entry, runningLeastPolytet.data(), newPolytetsCompressedSize) == 0)
+                            goto skipDuplicate;
+                        index = (HashIndex*)((TetIndexFace*)entry + newPolytetsCompressedSize);
                     }
+                    // Check for overlap between this newly attached tetrahedron and the existing ones,
+                    // and defer this until after the deduplication, to save a lot of time
+                    overlap.setA(newTet.t);
+                    for (auto tetCheckIntersection=polytet.cbegin(); tetCheckIntersection!=polytet.cend(); ++tetCheckIntersection)
+                    {
+                        if (&*tetCheckIntersection == &tetToAttachTo || &*tetCheckIntersection == &newTet)
+                            continue; // skip this check for speed (it'll always be false anyway)
+                        overlap.setB(*tetCheckIntersection);
+                        if (overlap())
+                            goto skipDueToOverlap;
+                    }
+                    // No overlap found, so add runningLeastPolytet to hash table
+                    if ((uint8_t*)entry + newPolytetsCompressedSize + polytetTableElementSize - (uint8_t*)pool > poolSize)
+                    {
+                        pool = realloc(pool, poolSize += poolSize * MEMORY_POOL_GROW_RATIO);
+                        // the below statements must be duplicates of their identical statements above (but as assignments rather than declarations, of course)
+                        basePolytetTable = (TetIndexFace*)pool;
+                        hashTable = (HashIndex*)(basePolytetTable + basePolytetCompressedSize * polytetCount);
+                        polytetTable = hashTable + hashTableSize;
+                    }
+                    memcpy(entry, runningLeastPolytet.data(), newPolytetsCompressedSize * sizeof(TetIndexFace));
+                    *index = ++newPolytetCount;
+                    *(HashIndex*)((TetIndexFace*)entry + newPolytetsCompressedSize) = 0; // pointer to next hash collision
+                skipDuplicate:
+                skipDueToOverlap:
+
                     tetToAttachTo.faceAttached[faceNum] = NULL;
                 }
             }
@@ -609,8 +650,11 @@ int main(int argc, char *argv[])
             polytet[1].faceAttached[2] = NULL;
         }
 
-        delete polytets;
-        polytets = newPolytets;
+        polytetCount = newPolytetCount;
+        for (size_t i=0; i<polytetCount; i++)
+            memcpy(
+                basePolytetTable            + i *                          newPolytetsCompressedSize * sizeof(TetIndexFace),
+                (TetIndexFace*)polytetTable + i * polytetTableElementSize, newPolytetsCompressedSize * sizeof(TetIndexFace));
 
         for (int p=0; p<4; p++)
             for (int d=0; d<3; d++)
