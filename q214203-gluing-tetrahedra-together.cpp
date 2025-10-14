@@ -514,7 +514,7 @@ int main(int argc, char *argv[])
 #endif
 
     size_t poolSize;
-    void *pool;
+    void *pool = NULL;
 
     TetrahedronOverlap overlap;
 
@@ -539,12 +539,7 @@ int main(int argc, char *argv[])
             else
                 break;
         }
-        if (!resumeFile)
-        {
-            pool = malloc(poolSize = MEMORY_POOL_INITIAL_SIZE);
-            if (!pool) quitMemory();
-        }
-        else
+        if (resumeFile)
         {
             fseek(resumeFile, 0, SEEK_END);
             size_t size = ftello64(resumeFile);
@@ -563,8 +558,13 @@ int main(int argc, char *argv[])
             polytetCount = size / (tetCount - 2);
         }
     }
+    if (!pool)
 #endif
-    
+    {
+        pool = malloc(poolSize = MEMORY_POOL_INITIAL_SIZE);
+        if (!pool) quitMemory();
+    }
+
     for (;;)
     {
         auto currentTime = std::chrono::steady_clock::now();
