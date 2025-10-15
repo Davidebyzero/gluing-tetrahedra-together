@@ -9,6 +9,7 @@
 #define MEMORY_POOL_INITIAL_SIZE (64uLL * 1024)  // in bytes; if the goal is to use more than half of available RAM, this must be preallocated at full expected size
 #define MEMORY_POOL_GROW_RATIO 1/64  // what proportion of the memory size to grow it by when more space is needed
 #define HASH_TABLE_RATIO 6
+#define SHOW_PROGRESS
 //#define KEEP_GOING
 
 #define WRITE_TO_FILES
@@ -609,6 +610,10 @@ int main(int argc, char *argv[])
         const int newPolytetsCompressedSize = tetCount - 2;
         const int polytetTableElementSize = newPolytetsCompressedSize * sizeof(TetIndexFace) + sizeof(HashIndex);
         size_t newPolytetCount = 0;
+#ifdef SHOW_PROGRESS
+        size_t nextProgressOutput = 0;
+        size_t progressOutputInterval = polytetCount / 1000;
+#endif
 
         Polytet polytet;
         polytet.reserve(tetCount); // Important, to ensure pointers don't change
@@ -616,8 +621,17 @@ int main(int argc, char *argv[])
         attachNewTet(polytet.emplace_back(), t0, 3);
 
         polytet.resize(tetCount);
-        for (auto basePolytetI=0; basePolytetI<polytetCount; basePolytetI++)
+        for (size_t basePolytetI=0; basePolytetI<polytetCount; basePolytetI++)
         {
+#ifdef SHOW_PROGRESS
+            if (basePolytetI >= nextProgressOutput)
+            {
+                nextProgressOutput = basePolytetI + progressOutputInterval;
+                unsigned perthouProgress = (basePolytetI * 1000 + (polytetCount / 2)) / polytetCount;
+                std::cout << perthouProgress / 10 << "." << perthouProgress % 10 << "%\r";
+                std::cout.flush();
+            }
+#endif
             TetIndexFace *basePolytet = basePolytetTable + basePolytetI * basePolytetCompressedSize;
             int tetNumToUncompress = 2;
             for (int elementToUncompress=0; elementToUncompress < basePolytetCompressedSize; elementToUncompress++)
