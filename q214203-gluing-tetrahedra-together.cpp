@@ -712,7 +712,7 @@ int main(int argc, char *argv[])
                             entry = (uint8_t*)polytetTable + newPolytetCount * polytetTableElementSize;
                             break; // no duplicate of runningLeastPolytet was found in hash table
                         }
-                        entry = (uint8_t*)polytetTable + (*index - 1) * polytetTableElementSize;
+                        entry = (uint8_t*)polytetTable + (size_t)(*index - 1) * polytetTableElementSize;
                         if (memcmp(entry, runningLeastPolytet.data(), newPolytetsCompressedSize) == 0)
                             goto skipDuplicate;
                         index = (HashIndex*)((TetIndexFace*)entry + newPolytetsCompressedSize);
