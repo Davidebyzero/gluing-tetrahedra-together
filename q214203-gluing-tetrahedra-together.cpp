@@ -554,9 +554,11 @@ int main(int argc, char *argv[])
                 quitMemory();
             }
             fseek(resumeFile, 0, SEEK_SET);
-            fread(pool, size, 1, resumeFile);
+            int polytetsCompressedSize = tetCount - 2;
+            polytetCount = size / (sizeof(TetIndexFace) * polytetsCompressedSize);
+            // Work around a bug in MinGW 64 by passing size arguments to fread() that with tetCount<=17 will fit in 32 bits
+            fread(pool, sizeof(TetIndexFace) * polytetsCompressedSize, polytetCount, resumeFile);
             fclose(resumeFile);
-            polytetCount = size / (tetCount - 2);
         }
     }
     if (!pool)
@@ -766,7 +768,8 @@ int main(int argc, char *argv[])
 
 #ifdef WRITE_TO_FILES
         FILE *f = fopen(getCompressedPolytetFilename(tetCount), "wb");
-        fwrite(basePolytetTable, newPolytetsCompressedSize * sizeof(TetIndexFace) * polytetCount, 1, f);
+        // Work around a bug in MinGW 64 by passing size arguments to fread() that with tetCount<=17 will fit in 32 bits
+        fwrite(basePolytetTable, sizeof(TetIndexFace) * newPolytetsCompressedSize, polytetCount, f);
         fclose(f);
 #endif
 
