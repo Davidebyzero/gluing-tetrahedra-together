@@ -39,6 +39,8 @@ typedef uint64_t HashIndex;
 typedef uint32_t HashIndex;
 #endif
 
+typedef unsigned __int128 CompressedPolytetBits; // Can handle up to 44 terms, while a 64-bit size_t can only handle up to about 28 terms
+
 #ifdef USE_GMP
 class Tetrahedron
 {
@@ -431,7 +433,7 @@ class CompressedPolytet
     {
         for (int faceNum=0; faceNum<3; faceNum++)
         {
-            if (value & ((unsigned __int128)1 << ((index - 1) * 3 + faceNum)))
+            if (value & ((CompressedPolytetBits)1 << ((index - 1) * 3 + faceNum)))
             {
                 TetIndex thisIndex = nextIndex++;
                 attachNewTet(polytet[thisIndex], polytet[index], faceNum);
@@ -440,7 +442,7 @@ class CompressedPolytet
         }
     }
 public:
-    unsigned __int128 value;
+    CompressedPolytetBits value;
     CompressedPolytet() : value(0) {}
     void append(Polytet &polytet, Tet &tetToCompress, int vertexMap[4], int faceRotation)
     // indices of vertexMap[] are compressed-output vertices; elements of vertexMap[] are the original vertices of tetToCompress
@@ -454,7 +456,7 @@ public:
             if (!attachedTet)
                 continue;
             attachedTet->assignIndex(polytet.nextIndex);
-            value |= (unsigned __int128)1 << ((tetToCompress.index - 1 - 1) * 3 + _faceNum);
+            value |= (CompressedPolytetBits)1 << ((tetToCompress.index - 1 - 1) * 3 + _faceNum);
 
             int attachedFace = 0;
             while (attachedTet->faceAttached[attachedFace] != &tetToCompress)
