@@ -32,7 +32,6 @@ void quitMemory()
 }
 
 typedef uint8_t TetIndex;
-typedef uint8_t TetIndexFace; // lowest 2 bits are used for a face index
 
 #ifdef KEEP_GOING
 typedef uint64_t HashIndex;
@@ -426,9 +425,23 @@ void attachNewTet(Tet &t, Tet &tetToAttachTo, const int faceNum)
 // it's attached. The lower 2 bits indicate which face (can only have 3 different values, because at least 1 face
 // will always already be attached). The remaining bits indicate which tetrahedron (which can never be zero,
 // because that one is attached implicitly).
-class CompressedPolytet : public std::vector<TetIndexFace>
+class CompressedPolytet
 {
+    void uncompressHelper(Polytet &polytet, TetIndex index, TetIndex &nextIndex)
+    {
+        for (int faceNum=0; faceNum<3; faceNum++)
+        {
+            if (value & ((unsigned __int128)1 << ((index - 1) * 3 + faceNum)))
+            {
+                TetIndex thisIndex = nextIndex++;
+                attachNewTet(polytet[thisIndex], polytet[index], faceNum);
+                uncompressHelper(polytet, thisIndex, nextIndex);
+            }
+        }
+    }
 public:
+    unsigned __int128 value;
+    CompressedPolytet() : value(0) {}
     void append(Polytet &polytet, Tet &tetToCompress, int vertexMap[4], int faceRotation)
     // indices of vertexMap[] are compressed-output vertices; elements of vertexMap[] are the original vertices of tetToCompress
     {
@@ -437,12 +450,12 @@ public:
         {
             int rotatedFaceNum = (_faceNum + faceRotation) % 3;
             int faceNum = 3 - vertexMap[3 - rotatedFaceNum];
-            if (!tetToCompress.faceAttached[faceNum])
-                continue;
             Tet *attachedTet = tetToCompress.faceAttached[faceNum];
+            if (!attachedTet)
+                continue;
             attachedTet->assignIndex(polytet.nextIndex);
-            push_back((((TetIndexFace)(tetToCompress.index - 1)) << 2) + _faceNum);
-            
+            value |= (unsigned __int128)1 << ((tetToCompress.index - 1 - 1) * 3 + _faceNum);
+
             int attachedFace = 0;
             while (attachedTet->faceAttached[attachedFace] != &tetToCompress)
                 attachedFace++;
@@ -463,11 +476,20 @@ public:
             append(polytet, *attachedTet, vertexMap2, rotation);
         }
     }
+    void uncompress(Polytet &polytet)
+    {
+        TetIndex index = 2;
+        uncompressHelper(polytet, 1, index);
+        if (index != polytet.size() - 1)
+        {
+            std::cerr << "Error! Got " << (unsigned)index << ", expected " << polytet.size() - 1 << std::endl;
+            exit(-1);
+        }
+    }
     size_t hash() const
     {
-        std::size_t seed = size();
-        for (auto i=cbegin(); i!=cend(); ++i)
-            seed ^= std::hash<uint32_t>{}(*i) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+        std::size_t seed  = std::hash<uint64_t>{}(((uint64_t*)&value)[0]);
+        {         } seed ^= std::hash<uint64_t>{}(((uint64_t*)&value)[1]) + (seed << 6) + (seed >> 2);
         return seed;
     }
 };
@@ -555,10 +577,10 @@ int main(int argc, char *argv[])
                 quitMemory();
             }
             fseek(resumeFile, 0, SEEK_SET);
-            int polytetsCompressedSize = tetCount - 2;
-            polytetCount = size / (sizeof(TetIndexFace) * polytetsCompressedSize);
+            int polytetsCompressedSize = ((tetCount - 2) * 3 + 8-1) / 8;
+            polytetCount = size / polytetsCompressedSize;
             // Work around a bug in MinGW 64 by passing size arguments to fread() that with tetCount<=17 will fit in 32 bits
-            fread(pool, sizeof(TetIndexFace) * polytetsCompressedSize, polytetCount, resumeFile);
+            fread(pool, polytetsCompressedSize, polytetCount, resumeFile);
             fclose(resumeFile);
         }
     }
@@ -589,14 +611,14 @@ int main(int argc, char *argv[])
             break;
 #endif
 
-        int basePolytetCompressedSize = tetCount - 3;
+        int basePolytetCompressedSize = ((tetCount - 3) * 3 + 8-1) / 8;
         size_t hashTableSize = polytetCount * HASH_TABLE_RATIO;
-        TetIndexFace *basePolytetTable;
+        uint8_t *basePolytetTable;
         HashIndex *hashTable;
         void *polytetTable;
         for (;;)
         {
-            basePolytetTable = (TetIndexFace*)pool;
+            basePolytetTable = (uint8_t*)pool;
             size_t basePolytetTableSize = basePolytetCompressedSize * polytetCount;
             hashTable = (HashIndex*)(basePolytetTable + basePolytetTableSize);
             polytetTable = hashTable + hashTableSize;
@@ -610,8 +632,8 @@ int main(int argc, char *argv[])
             pool = newPool2;
         }
         memset(hashTable, 0, hashTableSize * sizeof(HashIndex));
-        const int newPolytetsCompressedSize = tetCount - 2;
-        const int polytetTableElementSize = newPolytetsCompressedSize * sizeof(TetIndexFace) + sizeof(HashIndex);
+        const int newPolytetsCompressedSize = ((tetCount - 2) * 3 + 8-1) / 8;
+        const int polytetTableElementSize = newPolytetsCompressedSize + sizeof(HashIndex);
         size_t newPolytetCount = 0;
 #ifdef SHOW_PROGRESS
         size_t nextProgressOutput = 0;
@@ -635,19 +657,11 @@ int main(int argc, char *argv[])
                 std::cout.flush();
             }
 #endif
-            TetIndexFace *basePolytet = basePolytetTable + basePolytetI * basePolytetCompressedSize;
-            int tetNumToUncompress = 2;
-            for (int elementToUncompress=0; elementToUncompress < basePolytetCompressedSize; elementToUncompress++)
+            CompressedPolytet *basePolytet = (CompressedPolytet*)(basePolytetTable + basePolytetI * basePolytetCompressedSize);
             {
-                int faceNum          = basePolytet[elementToUncompress] & 3;
-                int tetNumToAttachTo = basePolytet[elementToUncompress] >> 2;
-                Tet &tetToAttachTo = polytet[tetNumToAttachTo];
-                attachNewTet(polytet[tetNumToUncompress++], tetToAttachTo, faceNum);
-            }
-            if (tetNumToUncompress != tetCount - 1)
-            {
-                std::cerr << "Error! Got " << tetNumToUncompress << ", expected " << tetCount - 1 << std::endl;
-                exit(-1);
+                CompressedPolytet tmp;
+                memcpy(&tmp.value, &basePolytet->value, basePolytetCompressedSize);
+                tmp.uncompress(polytet);
             }
 
             Tet &newTet = polytet[tetCount - 1];
@@ -690,14 +704,10 @@ int main(int argc, char *argv[])
                         {
                             polytet.resetIndexing(i);
                             CompressedPolytet newRotatedPolytet;
-                            newRotatedPolytet.reserve(newPolytetsCompressedSize);
                             newRotatedPolytet.append(polytet, *t, vertexMap, rotationStep);
 
                             // Update the running "least" rotation
-                            if (!haveRunningLeast ||
-                                std::lexicographical_compare(
-                                    newRotatedPolytet  .begin(), newRotatedPolytet  .end(),
-                                    runningLeastPolytet.begin(), runningLeastPolytet.end()))
+                            if (!haveRunningLeast || newRotatedPolytet.value < runningLeastPolytet.value)
                             {
                                 haveRunningLeast = true;
                                 runningLeastPolytet = newRotatedPolytet;
@@ -716,9 +726,9 @@ int main(int argc, char *argv[])
                             break; // no duplicate of runningLeastPolytet was found in hash table
                         }
                         entry = (uint8_t*)polytetTable + (size_t)(*index - 1) * polytetTableElementSize;
-                        if (memcmp(entry, runningLeastPolytet.data(), newPolytetsCompressedSize) == 0)
+                        if (memcmp(entry, &runningLeastPolytet.value, newPolytetsCompressedSize) == 0)
                             goto skipDuplicate;
-                        index = (HashIndex*)((TetIndexFace*)entry + newPolytetsCompressedSize);
+                        index = (HashIndex*)((uint8_t*)entry + newPolytetsCompressedSize);
                     }
                     // Check for overlap between this newly attached tetrahedron and the existing ones,
                     // and defer this until after the deduplication, to save a lot of time
@@ -744,9 +754,9 @@ int main(int argc, char *argv[])
                         (uint8_t*&)index            += diff;
                         (uint8_t*&)entry            += diff;
                     }
-                    memcpy(entry, runningLeastPolytet.data(), newPolytetsCompressedSize * sizeof(TetIndexFace));
+                    memcpy(entry, &runningLeastPolytet.value, newPolytetsCompressedSize);
                     *index = ++newPolytetCount;
-                    *(HashIndex*)((TetIndexFace*)entry + newPolytetsCompressedSize) = 0; // pointer to next hash collision
+                    *(HashIndex*)((uint8_t*)entry + newPolytetsCompressedSize) = 0; // pointer to next hash collision
                 skipDuplicate:
                 skipDueToOverlap:
 
@@ -764,13 +774,13 @@ int main(int argc, char *argv[])
         polytetCount = newPolytetCount;
         for (size_t i=0; i<polytetCount; i++)
             memcpy(
-                basePolytetTable            + i *                          newPolytetsCompressedSize * sizeof(TetIndexFace),
-                (TetIndexFace*)polytetTable + i * polytetTableElementSize, newPolytetsCompressedSize * sizeof(TetIndexFace));
+                basePolytetTable       + i *                          newPolytetsCompressedSize,
+                (uint8_t*)polytetTable + i * polytetTableElementSize, newPolytetsCompressedSize);
 
 #ifdef WRITE_TO_FILES
         FILE *f = fopen(getCompressedPolytetFilename(tetCount), "wb");
         // Work around a bug in MinGW 64 by passing size arguments to fread() that with tetCount<=17 will fit in 32 bits
-        fwrite(basePolytetTable, sizeof(TetIndexFace) * newPolytetsCompressedSize, polytetCount, f);
+        fwrite(basePolytetTable, newPolytetsCompressedSize, polytetCount, f);
         fclose(f);
 #endif
 
