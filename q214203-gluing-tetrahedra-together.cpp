@@ -652,7 +652,7 @@ int main(int argc, char *argv[])
             if (basePolytetI >= nextProgressOutput)
             {
                 nextProgressOutput = basePolytetI + progressOutputInterval;
-                unsigned perthouProgress = (basePolytetI * 1000 + (polytetCount / 2)) / polytetCount;
+                unsigned perthouProgress = (basePolytetI * 1000) / polytetCount;
                 std::cout << perthouProgress / 10 << "." << perthouProgress % 10 << "%\r";
                 std::cout.flush();
             }
