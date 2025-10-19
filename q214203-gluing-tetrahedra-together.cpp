@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <fcntl.h>
 #include <iostream>
 #include <string.h>
 #include <array>
@@ -14,6 +15,8 @@
 
 #define WRITE_TO_FILES
 #define RESUME_FROM_FILE
+
+#define FILE_CHUNK_SIZE (1 << 31)  // needs to be less than 1<<32
 
 #ifdef USE_GMP
 #include <gmp.h>
@@ -576,11 +579,18 @@ int main(int argc, char *argv[])
                 fclose(resumeFile);
                 quitMemory();
             }
-            fseek(resumeFile, 0, SEEK_SET);
             int polytetsCompressedSize = ((tetCount - 2) * 3 + 8-1) / 8;
             polytetCount = size / polytetsCompressedSize;
-            // Work around a bug in MinGW 64 by passing size arguments to fread() that with tetCount<=17 will fit in 32 bits
-            fread(pool, polytetsCompressedSize, polytetCount, resumeFile);
+            int fd = fileno(resumeFile);
+            lseek64(fd, 0, SEEK_SET);
+            uint8_t *ptr = (uint8_t*)pool;
+            while (size > FILE_CHUNK_SIZE)
+            {
+                read(fd, ptr, FILE_CHUNK_SIZE);
+                ptr  += FILE_CHUNK_SIZE;
+                size -= FILE_CHUNK_SIZE;
+            }
+            read(fd, ptr, size);
             fclose(resumeFile);
         }
     }
@@ -779,8 +789,16 @@ int main(int argc, char *argv[])
 
 #ifdef WRITE_TO_FILES
         FILE *f = fopen(getCompressedPolytetFilename(tetCount), "wb");
-        // Work around a bug in MinGW 64 by passing size arguments to fread() that with tetCount<=17 will fit in 32 bits
-        fwrite(basePolytetTable, newPolytetsCompressedSize, polytetCount, f);
+        int fd = fileno(f);
+        size_t size = polytetCount * newPolytetsCompressedSize;
+        uint8_t *ptr = basePolytetTable;
+        while (size > FILE_CHUNK_SIZE)
+        {
+            write(fd, ptr, FILE_CHUNK_SIZE);
+            ptr  += FILE_CHUNK_SIZE;
+            size -= FILE_CHUNK_SIZE;
+        }
+        write(fd, ptr, (uint32_t)size);
         fclose(f);
 #endif
 
