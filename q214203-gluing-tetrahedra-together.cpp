@@ -224,8 +224,8 @@ public:
                 // For speed, process only one out of every pair of attached faces (which share the exact same 3 vertices).
                 // This will still process the very first attached face twice, since that is a face[3] attached to another face[3],
                 // but it's probably not worth the extra machinery that would be necessary to special-case that.
-                if (faceNum!=3 && b->faceAttached[faceNum])
-                    continue;
+                /*if (faceNum!=3 && b->faceAttached[faceNum])
+                    continue;*/
                 const mpz_t *normalizedTetrahedron[4][3]; // first 3 points are the face, and the 4th point is for calculating the normal
                 for (int i=0; i<4; i++)
                     for (int d=0; d<3; d++)
@@ -316,8 +316,8 @@ public:
                 // For speed, process only one out of every pair of attached faces (which share the exact same 3 vertices).
                 // This will still process the very first attached face twice, since that is a face[3] attached to another face[3],
                 // but it's probably not worth the extra machinery that would be necessary to special-case that.
-                if (faceNum!=3 && b->faceAttached[faceNum])
-                    continue;
+                /*if (faceNum!=3 && b->faceAttached[faceNum])
+                    continue;*/
                 Tetrahedron normalizedTetrahedron; // first 3 points are the face, and the 4th point is for calculating the normal
                 for (int i=0; i<4; i++)
                     normalizedTetrahedron[i] = b->t[tetrahedronFaces[faceNum][i]];
@@ -624,14 +624,18 @@ int main(int argc, char *argv[])
         attachNewTet(polytet.emplace_back(), t0, 3);
 
         polytet.resize(tetCount);
-        for (size_t basePolytetI=0; basePolytetI<polytetCount; basePolytetI++)
+        for (size_t basePolytetI=
+                //9633181
+                //9706660
+                0
+                ; basePolytetI<polytetCount; basePolytetI++)
         {
 #ifdef SHOW_PROGRESS
             if (basePolytetI >= nextProgressOutput)
             {
                 nextProgressOutput = basePolytetI + progressOutputInterval;
                 unsigned perthouProgress = (basePolytetI * 1000 + (polytetCount / 2)) / polytetCount;
-                std::cout << perthouProgress / 10 << "." << perthouProgress % 10 << "%\r";
+                std::cout << perthouProgress / 10 << "." << perthouProgress % 10 << "%, " << basePolytetI << " -> " << newPolytetCount << "\r";
                 std::cout.flush();
             }
 #endif
@@ -720,6 +724,47 @@ int main(int argc, char *argv[])
                             goto skipDuplicate;
                         index = (HashIndex*)((TetIndexFace*)entry + newPolytetsCompressedSize);
                     }
+
+                    static TetIndexFace compareWith[] = {0x04,0x08,0x0D,0x12,0x14,0x18,0x1C,0x22,0x25,0x29,0x2D,0x32,0x34,0x39};
+                    if (tetCount==16 && memcmp(runningLeastPolytet.data(), compareWith, newPolytetsCompressedSize)==0)
+                    {
+                        bool itOverlaps = true;
+                        overlap.setA(newTet.t);
+                        for (auto tetCheckIntersection=polytet.cbegin(); tetCheckIntersection!=polytet.cend(); ++tetCheckIntersection)
+                        {
+                            if (&*tetCheckIntersection == &tetToAttachTo || &*tetCheckIntersection == &newTet)
+                                continue; // skip this check for speed (it'll always be false anyway)
+                            overlap.setB(*tetCheckIntersection);
+                            if (overlap())
+                                goto foundOverlap;
+                        }
+                        itOverlaps = false;
+                    foundOverlap:
+
+                        for (int i=0; i<tetCount; i++)
+                        {
+                            printf("[%d]                       \n", i);
+                            for (int p=0; p<4; p++)
+                                gmp_printf("    {%Zd, %Zd, %Zd}\n", polytet[i].t.t[p][0], polytet[i].t.t[p][1], polytet[i].t.t[p][2]);
+                            for (int faceNum=0; faceNum<4; faceNum++)
+                            {
+                                Tet *faceAttached = polytet[i].faceAttached[faceNum];
+                                if (faceAttached)
+                                {
+                                    intptr_t offset = (intptr_t)faceAttached - (intptr_t)&polytet[0];
+                                    printf("    face[%d] -> ", faceNum);
+                                    if (offset % sizeof(polytet[0]) == 0)
+                                        printf("[%lld]", offset / sizeof(polytet[0]));
+                                    else
+                                        printf("0x%08X", offset);
+                                    putchar('\n');
+                                }
+                            }
+                        }
+
+                        printf("{%llu -> %llu: %s}\n", basePolytetI, newPolytetCount, itOverlaps ? "overlap" : "no overlap"); fflush(stdout);
+                    }
+
                     // Check for overlap between this newly attached tetrahedron and the existing ones,
                     // and defer this until after the deduplication, to save a lot of time
                     overlap.setA(newTet.t);
@@ -744,6 +789,12 @@ int main(int argc, char *argv[])
                         (uint8_t*&)index            += diff;
                         (uint8_t*&)entry            += diff;
                     }
+
+                    /*for (int i=0; i<newPolytetsCompressedSize; i++)
+                        printf("%02X", runningLeastPolytet[i]);
+                    putchar('\n');
+                    exit(-1);*/
+
                     memcpy(entry, runningLeastPolytet.data(), newPolytetsCompressedSize * sizeof(TetIndexFace));
                     *index = ++newPolytetCount;
                     *(HashIndex*)((TetIndexFace*)entry + newPolytetsCompressedSize) = 0; // pointer to next hash collision
