@@ -558,8 +558,7 @@ int main(int argc, char *argv[])
                 if (resumeFile) fclose(resumeFile);
                 resumeFile = f;
                 tetCount = i;
-                if (i > 3)
-                    mul_start_3(start);
+                mul_start_3(start);
             }
             else
                 break;
