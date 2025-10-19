@@ -521,6 +521,11 @@ void mul_start_3(Tetrahedron &start)
 
 int main(int argc, char *argv[])
 {
+    if (uint64_t x=1; !*(uint8_t*)&x)
+    {
+        std::cerr << "Error: This program is hard-coded for little-endian byte order" << std::endl;
+        exit(-1);
+    }
 #ifdef USE_GMP
     Tetrahedron start;
     for (int d=0; d<3; d++)
