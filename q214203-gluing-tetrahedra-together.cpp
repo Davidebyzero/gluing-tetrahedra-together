@@ -568,7 +568,6 @@ int main(int argc, char *argv[])
         {
             fseeko64(resumeFile, 0, SEEK_END);
             size_t size = ftello64(resumeFile);
-            printf("%llu\n", size);
             poolSize = size;
             if (poolSize < MEMORY_POOL_INITIAL_SIZE)
                 poolSize = MEMORY_POOL_INITIAL_SIZE;
