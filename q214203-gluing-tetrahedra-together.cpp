@@ -19,9 +19,9 @@
 #define FILE_CHUNK_SIZE (1 << 31)  // needs to be less than 1<<32
 
 #ifdef USE_GMP
-#include <gmp.h>
+#   include <gmp.h>
 #   if GMP_NUMB_BITS != 64
-#   error This is hard-coded for 64-bit limbs
+#       error This is hard-coded for 64-bit limbs
 #   endif
 #endif
 
