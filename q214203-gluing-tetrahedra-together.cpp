@@ -10,7 +10,7 @@
 #define MEMORY_POOL_INITIAL_SIZE (64uLL * 1024)  // in bytes; if the goal is to use more than half of available RAM, this must be preallocated at full expected size
 #define MEMORY_POOL_GROW_RATIO 1/64  // what proportion of the memory size to grow it by when more space is needed
 #define HASH_TABLE_RATIO 6
-#define SHOW_PROGRESS
+#define SHOW_PROGRESS 16  // if defined, show progress starting at this term
 //#define KEEP_GOING
 
 #define WRITE_TO_FILES
@@ -651,7 +651,7 @@ int main(int argc, char *argv[])
         const int polytetTableElementSize = newPolytetsCompressedSize + sizeof(HashIndex);
         size_t newPolytetCount = 0;
 #ifdef SHOW_PROGRESS
-        size_t nextProgressOutput = 0;
+        size_t nextProgressOutput = tetCount < SHOW_PROGRESS ? UINT64_MAX : 0;
         size_t progressOutputInterval = polytetCount / 1000;
 #endif
 
