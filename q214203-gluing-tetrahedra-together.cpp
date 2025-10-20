@@ -8,7 +8,7 @@
 
 //#define USE_GMP
 #define MEMORY_POOL_INITIAL_SIZE (64uLL * 1024)  // in bytes; if the goal is to use more than half of available RAM, this must be preallocated at full expected size
-#define MEMORY_POOL_GROW_RATIO 1/64  // what proportion of the memory size to grow it by when more space is needed
+#define MEMORY_POOL_GROW_RATIO 1/16  // what proportion of the memory size to grow it by when more space is needed
 #define HASH_TABLE_RATIO 6
 #define SHOW_PROGRESS 16  // if defined, show progress starting at this term
 //#define KEEP_GOING
