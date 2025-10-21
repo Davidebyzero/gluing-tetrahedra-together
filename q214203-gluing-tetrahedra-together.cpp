@@ -227,11 +227,9 @@ public:
         for (int p=0; p<4; p++)
             for (int d=0; d<3; d++)
                 mpz_sub(center[d], center[d], b->t.t[p][d]);
-        // Get the sum of the squares of the orthogonal distances.
-        mpz_mul(center[0], center[0], center[0]);
-        for (int d=1; d<3; d++)
-            mpz_addmul(center[0], center[d], center[d]);
-        if (mpz_cmp(center[0], maximalTouchingSqrDistance) >= 0)
+        // Compare the sum of the squares of the orthogonal distances against the threshold squared distance.
+        dot(tmp[0], center, center);
+        if (mpz_cmp(tmp[0], maximalTouchingSqrDistance) >= 0)
             return false;
 
         // Take advantage of the fact that the two tetrahedrons are regular and congruent, and
@@ -337,11 +335,8 @@ public:
             for (int p=0; p<4; p++)
                 for (int d=0; d<3; d++)
                     center[d] -= b->t[p][d];
-            // Get the sum of the squares of the orthogonal distances.
-            center[0] *= center[0];
-            for (int d=1; d<3; d++)
-                center[0] += center[d] * center[d];
-            if (center[0] >= maximalTouchingSqrDistance)
+            // Compare the sum of the squares of the orthogonal distances against the threshold squared distance.
+            if (dot(center, center) >= maximalTouchingSqrDistance)
                 return false;
         }
         // Take advantage of the fact that the two tetrahedrons are regular and congruent, and
@@ -571,6 +566,12 @@ int main(int argc, char *argv[])
         std::cerr << "Error: This program is hard-coded for little-endian byte order" << std::endl;
         exit(-1);
     }
+    // The maximum distance between two touching congruent regular tetrahedrons is twice the radius (distance between the center of a tetrahedron and one of its vertices)
+    const unsigned MAXIMAL_TOUCHING_SQR_DISTANCE =
+        9*9    // squared coordinate of "start" tetrahedron
+        * 3    // number of dimensions
+        * 4*4  // squared number of vertices (to avoid dividing by 4 when averaging to get center coordinates)
+        * 2*2; // twice the radius, so we square that too
 #ifdef USE_GMP
     Tetrahedron start;
     for (int d=0; d<3; d++)
@@ -583,7 +584,7 @@ int main(int argc, char *argv[])
         mpz_set_si(start.t[p][p-1], -9);
     mpz_t      maximalTouchingSqrDistance;
     mpz_init  (maximalTouchingSqrDistance);
-    mpz_set_ui(maximalTouchingSqrDistance, 9*9 * 3 * 4*4 * 2*2);
+    mpz_set_ui(maximalTouchingSqrDistance, MAXIMAL_TOUCHING_SQR_DISTANCE);
 #else
     static Tetrahedron start =
     {{
@@ -592,7 +593,7 @@ int main(int argc, char *argv[])
         {{ 9,-9, 9}},
         {{ 9, 9,-9}}
     }};
-    static Coord maximalTouchingSqrDistance = 9*9 * 3 * 4*4 * 2*2;
+    static Coord maximalTouchingSqrDistance = MAXIMAL_TOUCHING_SQR_DISTANCE;
 #endif
 
     size_t poolSize;
