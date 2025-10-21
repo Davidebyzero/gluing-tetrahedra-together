@@ -87,12 +87,26 @@ public:
     Tetrahedron t;
     Tet *faceAttached[4];
     TetIndex index; // 1-based; 0=unassigned
+    bool skipOverlapCheck;
     Tet(                    ) : t( ) {initFaces();}
     Tet(const Tetrahedron &t) : t(t) {initFaces();}
     void assignIndex(TetIndex &nextIndex)
     {
         if (index == 0)
             index = nextIndex++;
+    }
+    void tagSkipOverlapCheck(int depth)
+    {
+        if (skipOverlapCheck)
+            return;
+        skipOverlapCheck = true;
+        if (--depth == 0)
+            return;
+        for (int faceNum=0; faceNum<4; faceNum++)
+        {
+            if (auto attached = faceAttached[faceNum])
+                attached->tagSkipOverlapCheck(depth);
+        }
     }
 };
 class Polytet : public std::vector<Tet>
@@ -798,9 +812,13 @@ int main(int argc, char *argv[])
                     // Check for overlap between this newly attached tetrahedron and the existing ones,
                     // and defer this until after the deduplication, to save a lot of time
                     overlap.setA(newTet.t);
+                    // Set up the "skipOverlapCheck" flags to skip overlap checking up to a depth of 5
+                    for (auto tetCheckIntersection=polytet.begin(); tetCheckIntersection!=polytet.end(); ++tetCheckIntersection)
+                        (*tetCheckIntersection).skipOverlapCheck = false;
+                    newTet.tagSkipOverlapCheck(5);
                     for (auto tetCheckIntersection=polytet.cbegin(); tetCheckIntersection!=polytet.cend(); ++tetCheckIntersection)
                     {
-                        if (&*tetCheckIntersection == &tetToAttachTo || &*tetCheckIntersection == &newTet)
+                        if ((*tetCheckIntersection).skipOverlapCheck)
                             continue; // skip this check for speed (it'll always be false anyway)
                         overlap.setB(*tetCheckIntersection);
                         if (overlap(maximalTouchingSqrDistance))
