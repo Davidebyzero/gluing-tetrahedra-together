@@ -214,8 +214,26 @@ public:
             for (int d=0; d<3; d++)
                 mpz_clear(triangle[p][d]);
     }
-    bool operator()()
+    bool operator()(const mpz_t maximalTouchingSqrDistance)
     {
+        // Skip the longer overlap checking algorithm if the two tetrahedrons' centers are sufficiently separated.
+        // Get center of tetrahedron "a" by averaging its vertices' coordinates, without dividing by 4.
+        for (int d=0; d<3; d++)
+            mpz_set(center[d], a->t[0][d]);
+        for (int p=1; p<4; p++)
+            for (int d=0; d<3; d++)
+                mpz_add(center[d], center[d], a->t[p][d]);
+        // Subtract center of tetrahedron "b" by averaging its vertices' coordinates, without dividing by 4.
+        for (int p=0; p<4; p++)
+            for (int d=0; d<3; d++)
+                mpz_sub(center[d], center[d], b->t.t[p][d]);
+        // Get the sum of the squares of the orthogonal distances.
+        mpz_mul(center[0], center[0], center[0]);
+        for (int d=1; d<3; d++)
+            mpz_addmul(center[0], center[d], center[d]);
+        if (mpz_cmp(center[0], maximalTouchingSqrDistance) >= 0)
+            return false;
+
         // Take advantage of the fact that the two tetrahedrons are regular and congruent, and
         // just check if any edge of tetrahedron "a" intersects with any face of tetrahedron "b".
         // Don't count it if only the endpoint of an edge intersects.
@@ -306,8 +324,26 @@ public:
     }
 #else
 public:
-    bool operator()()
+    bool operator()(const Coord &maximalTouchingSqrDistance)
     {
+        // Skip the longer overlap checking algorithm if the two tetrahedrons' centers are sufficiently separated.
+        {
+            // Get center of tetrahedron "a" by averaging its vertices' coordinates, without dividing by 4.
+            Coord3 center = {0, 0, 0};
+            for (int p=0; p<4; p++)
+                for (int d=0; d<3; d++)
+                    center[d] += (*a)[p][d];
+            // Subtract center of tetrahedron "b" by averaging its vertices' coordinates, without dividing by 4.
+            for (int p=0; p<4; p++)
+                for (int d=0; d<3; d++)
+                    center[d] -= b->t[p][d];
+            // Get the sum of the squares of the orthogonal distances.
+            center[0] *= center[0];
+            for (int d=1; d<3; d++)
+                center[0] += center[d] * center[d];
+            if (center[0] >= maximalTouchingSqrDistance)
+                return false;
+        }
         // Take advantage of the fact that the two tetrahedrons are regular and congruent, and
         // just check if any edge of tetrahedron "a" intersects with any face of tetrahedron "b".
         // Don't count it if only the endpoint of an edge intersects.
@@ -508,7 +544,11 @@ const char *getCompressedPolytetFilename(int tetCount)
 }
 #endif
 
-void mul_start_3(Tetrahedron &start)
+#ifdef USE_GMP
+void mul_start_3(Tetrahedron &start, mpz_t maximalTouchingSqrDistance)
+#else
+void mul_start_3(Tetrahedron &start, Coord &maximalTouchingSqrDistance)
+#endif
 {
     for (int p=0; p<4; p++)
         for (int d=0; d<3; d++)
@@ -516,6 +556,11 @@ void mul_start_3(Tetrahedron &start)
             mpz_mul_ui(start.t[p][d], start.t[p][d], 3);
 #else
             start[p][d] *= 3;
+#endif
+#ifdef USE_GMP
+    mpz_mul_ui(maximalTouchingSqrDistance, maximalTouchingSqrDistance, 3*3);
+#else
+    maximalTouchingSqrDistance *= 3*3;
 #endif
 }
 
@@ -536,6 +581,9 @@ int main(int argc, char *argv[])
     }
     for (int p=1; p<4; p++)
         mpz_set_si(start.t[p][p-1], -9);
+    mpz_t      maximalTouchingSqrDistance;
+    mpz_init  (maximalTouchingSqrDistance);
+    mpz_set_ui(maximalTouchingSqrDistance, 9*9 * 3 * 4*4 * 2*2);
 #else
     static Tetrahedron start =
     {{
@@ -544,6 +592,7 @@ int main(int argc, char *argv[])
         {{ 9,-9, 9}},
         {{ 9, 9,-9}}
     }};
+    static Coord maximalTouchingSqrDistance = 9*9 * 3 * 4*4 * 2*2;
 #endif
 
     size_t poolSize;
@@ -566,7 +615,7 @@ int main(int argc, char *argv[])
                 if (resumeFile) fclose(resumeFile);
                 resumeFile = f;
                 tetCount = i;
-                mul_start_3(start);
+                mul_start_3(start, maximalTouchingSqrDistance);
             }
             else
                 break;
@@ -753,7 +802,7 @@ int main(int argc, char *argv[])
                         if (&*tetCheckIntersection == &tetToAttachTo || &*tetCheckIntersection == &newTet)
                             continue; // skip this check for speed (it'll always be false anyway)
                         overlap.setB(*tetCheckIntersection);
-                        if (overlap())
+                        if (overlap(maximalTouchingSqrDistance))
                             goto skipDueToOverlap;
                     }
                     // No overlap found, so add runningLeastPolytet to hash table
@@ -807,9 +856,12 @@ int main(int argc, char *argv[])
         fclose(f);
 #endif
 
-        mul_start_3(start);
+        mul_start_3(start, maximalTouchingSqrDistance);
     }
 
     free(pool);
+#ifdef USE_GMP
+    mpz_clear(maximalTouchingSqrDistance);
+#endif
 	return 0;
 }
