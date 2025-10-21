@@ -863,5 +863,5 @@ int main(int argc, char *argv[])
 #ifdef USE_GMP
     mpz_clear(maximalTouchingSqrDistance);
 #endif
-	return 0;
+    return 0;
 }
