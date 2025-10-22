@@ -6,8 +6,6 @@
 #include <vector>
 #include <chrono>
 
-#define REFLECTIONS_ARE_DIFFERENT
-
 //#define USE_GMP
 #define MEMORY_POOL_INITIAL_SIZE (64uLL * 1024)  // in bytes; if the goal is to use more than half of available RAM, this must be preallocated at full expected size
 #define MEMORY_POOL_GROW_RATIO 1/16  // what proportion of the memory size to grow it by when more space is needed
@@ -494,23 +492,13 @@ class CompressedPolytet
 public:
     CompressedPolytetBits value;
     CompressedPolytet() : value(0) {}
-    void append(Polytet &polytet, Tet &tetToCompress, int vertexMap[4], int faceRotation
-#ifndef REFLECTIONS_ARE_DIFFERENT
-        , int reflect
-#endif
-        )
+    void append(Polytet &polytet, Tet &tetToCompress, int vertexMap[4], int faceRotation, int reflect)
     // indices of vertexMap[] are compressed-output vertices; elements of vertexMap[] are the original vertices of tetToCompress
     {
         tetToCompress.assignIndex(polytet.nextIndex);
         for (int _faceNum=0; _faceNum<3; _faceNum++)
         {
-            int rotatedFaceNum = (
-#ifdef REFLECTIONS_ARE_DIFFERENT
-                _faceNum
-#else
-                (reflect ? _faceNum ^ (_faceNum <= 1) : _faceNum)
-#endif
-                + faceRotation) % 3;
+            int rotatedFaceNum = ((reflect ? _faceNum ^ (_faceNum <= 1) : _faceNum) + faceRotation) % 3;
             int faceNum = 3 - vertexMap[3 - rotatedFaceNum];
             Tet *attachedTet = tetToCompress.faceAttached[faceNum];
             if (!attachedTet)
@@ -535,11 +523,7 @@ public:
                 vertexMap2[3] = vertexMap2[2];
                 vertexMap2[2] = tmp;
             }*/
-            append(polytet, *attachedTet, vertexMap2, rotation
-#ifndef REFLECTIONS_ARE_DIFFERENT
-                , reflect
-#endif
-                );
+            append(polytet, *attachedTet, vertexMap2, rotation, reflect);
         }
     }
     void uncompress(Polytet &polytet)
@@ -688,10 +672,11 @@ int main(int argc, char *argv[])
         if (!pool) quitMemory();
     }
 
+    size_t polytetChiralCount = 0;
     for (;;)
     {
         auto currentTime = std::chrono::steady_clock::now();
-        std::cout << tetCount << ": " << polytetCount << " [" << std::chrono::duration_cast<std::chrono::milliseconds>(currentTime - startTime).count() << " ms";
+        std::cout << tetCount << ": " << polytetCount + polytetChiralCount << " (" << polytetCount << ") [" << std::chrono::duration_cast<std::chrono::milliseconds>(currentTime - startTime).count() << " ms";
         if (memoryUsage)
             std::cout << ", " << memoryUsage << " bytes";
         std::cout << "]" << std::endl;
@@ -743,6 +728,7 @@ int main(int argc, char *argv[])
         attachNewTet(polytet.emplace_back(), t0, 3);
 
         polytet.resize(tetCount);
+        polytetChiralCount = 0;
         for (size_t basePolytetI=0; basePolytetI<polytetCount; basePolytetI++)
         {
 #ifdef SHOW_PROGRESS
@@ -771,8 +757,8 @@ int main(int argc, char *argv[])
                         continue;
                     attachNewTet(newTet, tetToAttachTo, faceNum);
                     // Canonicalize the rotation of this new polytet in compressed form, so that it can be compared against others
-                    bool haveRunningLeast = false;
-                    CompressedPolytet runningLeastPolytet;
+                    bool haveRunningLeast[2] = {false, false};
+                    CompressedPolytet runningLeastPolytet[2];
 
                     Tet *t = &polytet[1];
                     for (int i=0; i<tetCount; i++)
@@ -797,40 +783,38 @@ int main(int argc, char *argv[])
                             };
                             memcpy(vertexMap, vertexMapTable[attachedFace], sizeof(vertexMap));
                         }
-#ifndef REFLECTIONS_ARE_DIFFERENT
                         for (int reflect=0; reflect<2; reflect++)
-#endif
                         for (int rotationStep=0; rotationStep<3; rotationStep++)
                         {
                             polytet.resetIndexing(i);
                             CompressedPolytet newRotatedPolytet;
-                            newRotatedPolytet.append(polytet, *t, vertexMap, rotationStep
-#ifndef REFLECTIONS_ARE_DIFFERENT
-                                , reflect
-#endif
-                                );
+                            newRotatedPolytet.append(polytet, *t, vertexMap, rotationStep, reflect);
 
                             // Update the running "least" rotation
-                            if (!haveRunningLeast || newRotatedPolytet.value < runningLeastPolytet.value)
+                            if (!haveRunningLeast[reflect] || newRotatedPolytet.value < runningLeastPolytet[reflect].value)
                             {
-                                haveRunningLeast = true;
-                                runningLeastPolytet = newRotatedPolytet;
+                                haveRunningLeast[reflect] = true;
+                                runningLeastPolytet[reflect] = newRotatedPolytet;
                             }
                         }
                     skipThisTet:;
                     }
 
-                    HashIndex *index = &hashTable[runningLeastPolytet.hash() % hashTableSize];
+                    bool isChiral = runningLeastPolytet[1].value != runningLeastPolytet[0].value;
+                    if (isChiral && runningLeastPolytet[1].value <  runningLeastPolytet[0].value)
+                        runningLeastPolytet[0] = runningLeastPolytet[1];
+
+                    HashIndex *index = &hashTable[runningLeastPolytet[0].hash() % hashTableSize];
                     void *entry;
                     for (;;)
                     {
                         if (*index == 0)
                         {
                             entry = (uint8_t*)polytetTable + newPolytetCount * polytetTableElementSize;
-                            break; // no duplicate of runningLeastPolytet was found in hash table
+                            break; // no duplicate of runningLeastPolytet[0] was found in hash table
                         }
                         entry = (uint8_t*)polytetTable + (size_t)(*index - 1) * polytetTableElementSize;
-                        if (memcmp(entry, &runningLeastPolytet.value, newPolytetsCompressedSize) == 0)
+                        if (memcmp(entry, &runningLeastPolytet[0].value, newPolytetsCompressedSize) == 0)
                             goto skipDuplicate;
                         index = (HashIndex*)((uint8_t*)entry + newPolytetsCompressedSize);
                     }
@@ -852,7 +836,8 @@ int main(int argc, char *argv[])
                             goto skipDueToOverlap;
                         }
                     }
-                    // No overlap found, so add runningLeastPolytet to hash table
+                    // No overlap found, so add runningLeastPolytet[0] to hash table and chiral count
+                    polytetChiralCount += isChiral;
                     if ((uint8_t*)entry + polytetTableElementSize - (uint8_t*)pool > poolSize)
                     {
                         void *newPool = realloc(pool, poolSize += poolSize * MEMORY_POOL_GROW_RATIO);
@@ -865,7 +850,7 @@ int main(int argc, char *argv[])
                         (uint8_t*&)index            += diff;
                         (uint8_t*&)entry            += diff;
                     }
-                    memcpy(entry, &runningLeastPolytet.value, newPolytetsCompressedSize);
+                    memcpy(entry, &runningLeastPolytet[0].value, newPolytetsCompressedSize);
                     *index = ++newPolytetCount;
                     *(HashIndex*)((uint8_t*)entry + newPolytetsCompressedSize) = 0; // pointer to next hash collision
                 skipDuplicate:
