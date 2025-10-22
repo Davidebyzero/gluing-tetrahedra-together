@@ -6,6 +6,8 @@
 #include <vector>
 #include <chrono>
 
+#define REFLECTIONS_ARE_DIFFERENT
+
 //#define USE_GMP
 #define MEMORY_POOL_INITIAL_SIZE (64uLL * 1024)  // in bytes; if the goal is to use more than half of available RAM, this must be preallocated at full expected size
 #define MEMORY_POOL_GROW_RATIO 1/16  // what proportion of the memory size to grow it by when more space is needed
@@ -492,13 +494,23 @@ class CompressedPolytet
 public:
     CompressedPolytetBits value;
     CompressedPolytet() : value(0) {}
-    void append(Polytet &polytet, Tet &tetToCompress, int vertexMap[4], int faceRotation)
+    void append(Polytet &polytet, Tet &tetToCompress, int vertexMap[4], int faceRotation
+#ifndef REFLECTIONS_ARE_DIFFERENT
+        , int reflect
+#endif
+        )
     // indices of vertexMap[] are compressed-output vertices; elements of vertexMap[] are the original vertices of tetToCompress
     {
         tetToCompress.assignIndex(polytet.nextIndex);
         for (int _faceNum=0; _faceNum<3; _faceNum++)
         {
-            int rotatedFaceNum = (_faceNum + faceRotation) % 3;
+            int rotatedFaceNum = (
+#ifdef REFLECTIONS_ARE_DIFFERENT
+                _faceNum
+#else
+                (reflect ? _faceNum ^ (_faceNum <= 1) : _faceNum)
+#endif
+                + faceRotation) % 3;
             int faceNum = 3 - vertexMap[3 - rotatedFaceNum];
             Tet *attachedTet = tetToCompress.faceAttached[faceNum];
             if (!attachedTet)
@@ -523,7 +535,11 @@ public:
                 vertexMap2[3] = vertexMap2[2];
                 vertexMap2[2] = tmp;
             }*/
-            append(polytet, *attachedTet, vertexMap2, rotation);
+            append(polytet, *attachedTet, vertexMap2, rotation
+#ifndef REFLECTIONS_ARE_DIFFERENT
+                , reflect
+#endif
+                );
         }
     }
     void uncompress(Polytet &polytet)
@@ -781,11 +797,18 @@ int main(int argc, char *argv[])
                             };
                             memcpy(vertexMap, vertexMapTable[attachedFace], sizeof(vertexMap));
                         }
+#ifndef REFLECTIONS_ARE_DIFFERENT
+                        for (int reflect=0; reflect<2; reflect++)
+#endif
                         for (int rotationStep=0; rotationStep<3; rotationStep++)
                         {
                             polytet.resetIndexing(i);
                             CompressedPolytet newRotatedPolytet;
-                            newRotatedPolytet.append(polytet, *t, vertexMap, rotationStep);
+                            newRotatedPolytet.append(polytet, *t, vertexMap, rotationStep
+#ifndef REFLECTIONS_ARE_DIFFERENT
+                                , reflect
+#endif
+                                );
 
                             // Update the running "least" rotation
                             if (!haveRunningLeast || newRotatedPolytet.value < runningLeastPolytet.value)
