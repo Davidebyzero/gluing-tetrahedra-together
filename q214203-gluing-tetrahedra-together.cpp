@@ -667,6 +667,80 @@ int main(int argc, char *argv[])
     }
 
     size_t polytetChiralCount = 0;
+#ifdef RESUME_FROM_FILE
+#if 1
+    if (tetCount > 1)
+    {
+        Polytet polytet;
+        polytet.reserve(tetCount + 1); // Important, to ensure pointers don't change
+        Tet &t0    = polytet.emplace_back(start);
+        attachNewTet(polytet.emplace_back(), t0, 3);
+
+        polytet.resize(tetCount + 1);
+        polytetChiralCount = 0;
+        uint8_t *basePolytetTable = (uint8_t*)pool;
+        int basePolytetCompressedSize = ((tetCount - 2) * 3 + 8-1) / 8;
+        for (size_t basePolytetI=0; basePolytetI<polytetCount; basePolytetI++)
+        {
+if (basePolytetI % 16384 == 0)
+printf("%llu / %llu\r", basePolytetI, polytetCount); fflush(stdout);
+            CompressedPolytet *basePolytet = (CompressedPolytet*)(basePolytetTable + basePolytetI * basePolytetCompressedSize);
+            CompressedPolytet tmp;
+            memcpy(&tmp.value, &basePolytet->value, basePolytetCompressedSize);
+            tmp.uncompress(polytet);
+
+            bool haveRunningLeast = false;
+            CompressedPolytet runningLeastPolytet;
+
+            Tet *t = &polytet[1];
+            for (int i=0; i<tetCount; i++)
+            {
+                int attachedFace;
+                int vertexMap[4];
+                {
+                    Tet &singlyAttachedTet = polytet[i];
+                    for (int j=0; j<3; j++)
+                        if (singlyAttachedTet.faceAttached[j])
+                            goto skipThisTet_; // not a singly attached tet
+                    t = singlyAttachedTet.faceAttached[3];
+                    attachedFace = 0;
+                    while (t->faceAttached[attachedFace] != &singlyAttachedTet)
+                        attachedFace++;
+                    static int vertexMapTable[4][4] =
+                    {
+                        {3, 0, 2, 1},
+                        {2, 0, 1, 3},
+                        {1, 0, 3, 2},
+                        {0, 1, 2, 3},
+                    };
+                    memcpy(vertexMap, vertexMapTable[attachedFace], sizeof(vertexMap));
+                }
+                for (int rotationStep=0; rotationStep<3; rotationStep++)
+                {
+                    polytet.resetIndexing(i);
+                    CompressedPolytet newRotatedPolytet;
+                    newRotatedPolytet.append(polytet, *t, vertexMap, rotationStep, true);
+
+                    // Update the running "least" rotation
+                    if (!haveRunningLeast || newRotatedPolytet.value < runningLeastPolytet.value)
+                    {
+                        haveRunningLeast = true;
+                        runningLeastPolytet = newRotatedPolytet;
+                    }
+                }
+            skipThisTet_:;
+            }
+
+            if (runningLeastPolytet.value != tmp.value)
+                polytetChiralCount++;
+
+            polytet[1].faceAttached[0] = NULL;
+            polytet[1].faceAttached[1] = NULL;
+            polytet[1].faceAttached[2] = NULL;
+        }
+    }
+#endif
+#endif
     for (;;)
     {
         auto currentTime = std::chrono::steady_clock::now();
