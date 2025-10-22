@@ -517,12 +517,6 @@ public:
             vertexMap2[3] = tetrahedronFaces[attachedFace][1];
             vertexMap2[2] = tetrahedronFaces[attachedFace][2];
             vertexMap2[0] = tetrahedronFaces[attachedFace][3];
-            /*if (faceNum == 3)
-            {
-                int tmp = vertexMap2[3];
-                vertexMap2[3] = vertexMap2[2];
-                vertexMap2[2] = tmp;
-            }*/
             append(polytet, *attachedTet, vertexMap2, rotation, reflect);
         }
     }
