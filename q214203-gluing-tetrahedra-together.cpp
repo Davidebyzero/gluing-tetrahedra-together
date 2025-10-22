@@ -100,7 +100,7 @@ public:
         if (skipOverlapCheck)
             return;
         skipOverlapCheck = true;
-        if (--depth == 0)
+        if (--depth <= 0)
             return;
         for (int faceNum=0; faceNum<4; faceNum++)
         {
@@ -614,6 +614,8 @@ int main(int argc, char *argv[])
     void *pool = NULL;
 
     TetrahedronOverlap overlap;
+    int minOverlapDepth = 2;
+    bool foundOverlaps = false;
 
     size_t prevPolytetCount = 0;
     size_t polytetCount = 1;
@@ -815,14 +817,17 @@ int main(int argc, char *argv[])
                     // Set up the "skipOverlapCheck" flags to skip overlap checking up to a depth of 5
                     for (auto tetCheckIntersection=polytet.begin(); tetCheckIntersection!=polytet.end(); ++tetCheckIntersection)
                         (*tetCheckIntersection).skipOverlapCheck = false;
-                    newTet.tagSkipOverlapCheck(5);
+                    newTet.tagSkipOverlapCheck(minOverlapDepth);
                     for (auto tetCheckIntersection=polytet.cbegin(); tetCheckIntersection!=polytet.cend(); ++tetCheckIntersection)
                     {
                         if ((*tetCheckIntersection).skipOverlapCheck)
                             continue; // skip this check for speed (it'll always be false anyway)
                         overlap.setB(*tetCheckIntersection);
                         if (overlap(maximalTouchingSqrDistance))
+                        {
+                            foundOverlaps = true;
                             goto skipDueToOverlap;
+                        }
                     }
                     // No overlap found, so add runningLeastPolytet to hash table
                     if ((uint8_t*)entry + polytetTableElementSize - (uint8_t*)pool > poolSize)
@@ -876,6 +881,8 @@ int main(int argc, char *argv[])
 #endif
 
         mul_start_3(start, maximalTouchingSqrDistance);
+        if (!foundOverlaps)
+            minOverlapDepth++;
     }
 
     free(pool);
