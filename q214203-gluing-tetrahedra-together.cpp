@@ -666,11 +666,17 @@ int main(int argc, char *argv[])
         if (!pool) quitMemory();
     }
 
+    bool resumedFromFile = tetCount > 1;
     size_t polytetChiralCount = 0;
     for (;;)
     {
         auto currentTime = std::chrono::steady_clock::now();
-        std::cout << tetCount << ": " << polytetCount + polytetChiralCount << " (" << polytetCount << ") [" << std::chrono::duration_cast<std::chrono::milliseconds>(currentTime - startTime).count() << " ms";
+        std::cout << tetCount << ": ";
+        if (resumedFromFile)
+            std::cout << "resumed";
+        else
+            std::cout << polytetCount + polytetChiralCount;
+        std::cout << " (" << polytetCount << ") [" << std::chrono::duration_cast<std::chrono::milliseconds>(currentTime - startTime).count() << " ms";
         if (memoryUsage)
             std::cout << ", " << memoryUsage << " bytes";
         std::cout << "]" << std::endl;
@@ -882,6 +888,7 @@ int main(int argc, char *argv[])
         fclose(f);
 #endif
 
+        resumedFromFile = false;
         mul_start_3(start, maximalTouchingSqrDistance);
         if (!foundOverlaps)
             minOverlapDepth++;
