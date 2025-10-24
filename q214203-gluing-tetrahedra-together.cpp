@@ -133,14 +133,6 @@ static const int tetrahedronFaces[4][4] =
     {1, 3, 2, 0},
 };
 
-static const uint8_t vertexMapTable[4][4] =
-{
-    {3, 0, 2, 1},
-    {2, 0, 1, 3},
-    {1, 0, 3, 2},
-    {0, 1, 2, 3},
-};
-
 static const int tetrahedronEdges[6][2] =
 {
     {0, 1},
@@ -150,6 +142,15 @@ static const int tetrahedronEdges[6][2] =
     {1, 3},
     {2, 3},
 };
+
+uint8_t vertexMapTable[4][4];
+
+void initLookupTables()
+{
+    for (int i=0; i<4; i++)
+        for (int j=0; j<4; j++)
+            vertexMapTable[i][tetrahedronFaces[3][j]] = tetrahedronFaces[i][j];
+}
 
 #ifndef USE_GMP
 Coord3 operator+(const Coord3 &a, const Coord3 &b)
@@ -601,6 +602,7 @@ int main(int argc, char *argv[])
         * 3    // number of dimensions
         * 4*4  // squared number of vertices (to avoid dividing by 4 when averaging to get center coordinates)
         * 2*2; // twice the radius, so we square that too
+    initLookupTables();
 #ifdef USE_GMP
     Tetrahedron start;
     for (int d=0; d<3; d++)
