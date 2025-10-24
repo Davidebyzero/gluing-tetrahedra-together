@@ -133,6 +133,14 @@ static const int tetrahedronFaces[4][4] =
     {1, 3, 2, 0},
 };
 
+static const uint8_t vertexMapTable[4][4] =
+{
+    {3, 0, 2, 1},
+    {2, 0, 1, 3},
+    {1, 0, 3, 2},
+    {0, 1, 2, 3},
+};
+
 static const int tetrahedronEdges[6][2] =
 {
     {0, 1},
@@ -495,7 +503,7 @@ class CompressedPolytet
 public:
     CompressedPolytetBits value;
     CompressedPolytet() : value(0) {}
-    void append(Polytet &polytet, Tet &tetToCompress, int vertexMap[4], int faceRotation, int reflect)
+    void append(Polytet &polytet, Tet &tetToCompress, const uint8_t *vertexMap, int faceRotation, int reflect)
     // indices of vertexMap[] are compressed-output vertices; elements of vertexMap[] are the original vertices of tetToCompress
     {
         tetToCompress.assignIndex(polytet.nextIndex);
@@ -527,15 +535,10 @@ public:
             value |= (CompressedPolytetBits)1 << ((tetToCompress.index - 1 - 1) * 3 + _faceNum);
 
             int attachedFace = tetToCompress.faceAttachedFace[faceNum];
-            int vertexMap2[4];
             int rotation = 0;
             while (vertexMap[tetrahedronFaces[rotatedFaceNum][rotation]] != tetrahedronFaces[faceNum][0])
                 rotation++;
-            vertexMap2[1] = tetrahedronFaces[attachedFace][0];
-            vertexMap2[3] = tetrahedronFaces[attachedFace][1];
-            vertexMap2[2] = tetrahedronFaces[attachedFace][2];
-            vertexMap2[0] = tetrahedronFaces[attachedFace][3];
-            append(polytet, *attachedTet, vertexMap2, rotation, reflect);
+            append(polytet, *attachedTet, vertexMapTable[attachedFace], rotation, reflect);
         }
     }
     void uncompress(Polytet &polytet)
@@ -781,25 +784,15 @@ int main(int argc, char *argv[])
                     Tet *t = &polytet[1];
                     for (int i=0; i<tetCount; i++)
                     {
-                        int attachedFace;
-                        int vertexMap[4];
+                        const uint8_t *vertexMap;
                         {
                             Tet &singlyAttachedTet = polytet[i];
                             for (int j=0; j<3; j++)
                                 if (singlyAttachedTet.faceAttached[j])
                                     goto skipThisTet; // not a singly attached tet
                             t = singlyAttachedTet.faceAttached[3];
-                            attachedFace = 0;
-                            while (t->faceAttached[attachedFace] != &singlyAttachedTet)
-                                attachedFace++;
-                            static const int vertexMapTable[4][4] =
-                            {
-                                {3, 0, 2, 1},
-                                {2, 0, 1, 3},
-                                {1, 0, 3, 2},
-                                {0, 1, 2, 3},
-                            };
-                            memcpy(vertexMap, vertexMapTable[attachedFace], sizeof(vertexMap));
+                            int attachedFace = singlyAttachedTet.faceAttachedFace[3];
+                            vertexMap = vertexMapTable[attachedFace];
                         }
                         for (int reflect=0; reflect<2; reflect++)
                         for (int rotationStep=0; rotationStep<3; rotationStep++)
