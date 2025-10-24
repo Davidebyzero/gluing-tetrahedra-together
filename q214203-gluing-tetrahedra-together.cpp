@@ -125,7 +125,7 @@ public:
 };
 
 // vertex indices of faces with identical chirality
-static int tetrahedronFaces[4][4] =
+static const int tetrahedronFaces[4][4] =
 {
     {0, 1, 2, 3},
     {0, 3, 1, 2},
@@ -133,7 +133,7 @@ static int tetrahedronFaces[4][4] =
     {1, 3, 2, 0},
 };
 
-static int tetrahedronEdges[6][2] =
+static const int tetrahedronEdges[6][2] =
 {
     {0, 1},
     {1, 2},
@@ -504,7 +504,7 @@ public:
 #if 0
             int rotatedFaceNum = ((reflect ? _faceNum ^ (_faceNum <= 1) : _faceNum) + faceRotation) % 3;
 #else
-            static int faceRotateReflect[2][3][3] =
+            static const int faceRotateReflect[2][3][3] =
             {
                 {
                     {0, 1, 2},
@@ -792,7 +792,7 @@ int main(int argc, char *argv[])
                             attachedFace = 0;
                             while (t->faceAttached[attachedFace] != &singlyAttachedTet)
                                 attachedFace++;
-                            static int vertexMapTable[4][4] =
+                            static const int vertexMapTable[4][4] =
                             {
                                 {3, 0, 2, 1},
                                 {2, 0, 1, 3},
