@@ -85,7 +85,8 @@ class Tet
     }
 public:
     Tetrahedron t;
-    Tet *faceAttached[4];
+    Tet    *faceAttached    [4];
+    uint8_t faceAttachedFace[4];
     TetIndex index; // 1-based; 0=unassigned
     bool skipOverlapCheck;
     Tet(                    ) : t( ) {initFaces();}
@@ -464,11 +465,13 @@ void attachNewTet(Tet &t, Tet &tetToAttachTo, const int faceNum)
             t.t[1+p][d] = tetToAttachTo.t[p1][d];
 #endif
     }
-    t.faceAttached[0] = NULL;
-    t.faceAttached[1] = NULL;
-    t.faceAttached[2] = NULL;
-    t.faceAttached[3] = &tetToAttachTo;
-    tetToAttachTo.faceAttached[faceNum] = &t;
+    t.faceAttached    [0] = NULL;
+    t.faceAttached    [1] = NULL;
+    t.faceAttached    [2] = NULL;
+    t.faceAttached    [3] = &tetToAttachTo;
+    t.faceAttachedFace[3] = faceNum;
+    tetToAttachTo.faceAttached    [faceNum] = &t;
+    tetToAttachTo.faceAttachedFace[faceNum] = 3;
 }
 
 // First two tetrahedrons are implied. Each element is a subsequent tetrahedron, with the value indicating where
@@ -506,9 +509,7 @@ public:
             attachedTet->assignIndex(polytet.nextIndex);
             value |= (CompressedPolytetBits)1 << ((tetToCompress.index - 1 - 1) * 3 + _faceNum);
 
-            int attachedFace = 0;
-            while (attachedTet->faceAttached[attachedFace] != &tetToCompress)
-                attachedFace++;
+            int attachedFace = tetToCompress.faceAttachedFace[faceNum];
             int vertexMap2[4];
             int rotation = 0;
             while (vertexMap[tetrahedronFaces[rotatedFaceNum][rotation]] != tetrahedronFaces[faceNum][0])
