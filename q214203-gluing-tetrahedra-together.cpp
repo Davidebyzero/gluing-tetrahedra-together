@@ -147,6 +147,17 @@ uint8_t vertexMapTable[4][4];
 
 void initLookupTables()
 {
+#if 0 // initializing "tetrahedronFaces" at runtime results in a slower executable with GCC
+    for (int i=0; i<4; i++)
+    {
+        int oppositeVertex = 3 - i;
+        for (int j=0; j<3; j++)
+            tetrahedronFaces[i][j] = j + (j >= oppositeVertex ? 1 : 0);
+        if (i & 1)
+            std::swap(tetrahedronFaces[i][1], tetrahedronFaces[i][2]);
+        tetrahedronFaces[i][3] = oppositeVertex;
+    }
+#endif
     for (int i=0; i<4; i++)
         for (int j=0; j<4; j++)
             vertexMapTable[i][tetrahedronFaces[3][j]] = tetrahedronFaces[i][j];
