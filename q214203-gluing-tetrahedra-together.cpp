@@ -501,7 +501,24 @@ public:
         tetToCompress.assignIndex(polytet.nextIndex);
         for (int _faceNum=0; _faceNum<3; _faceNum++)
         {
+#if 0
             int rotatedFaceNum = ((reflect ? _faceNum ^ (_faceNum <= 1) : _faceNum) + faceRotation) % 3;
+#else
+            static int faceRotateReflect[2][3][3] =
+            {
+                {
+                    {0, 1, 2},
+                    {1, 2, 0},
+                    {2, 0, 1},
+                },
+                {
+                    {1, 2, 0},
+                    {0, 1, 2},
+                    {2, 0, 1},
+                },
+            };
+            int rotatedFaceNum = faceRotateReflect[reflect][_faceNum][faceRotation];
+#endif
             int faceNum = 3 - vertexMap[3 - rotatedFaceNum];
             Tet *attachedTet = tetToCompress.faceAttached[faceNum];
             if (!attachedTet)
