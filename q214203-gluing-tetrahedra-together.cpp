@@ -442,6 +442,7 @@ public:
 #endif
 };
 
+template <bool DO_TREE, bool DO_COORDINATES>
 void attachNewTet(Tet &t, Tet &tetToAttachTo, const int faceNum)
 {
 #ifdef USE_GMP
@@ -507,7 +508,7 @@ class CompressedPolytet
             if (value & ((CompressedPolytetBits)1 << ((index - 1) * 3 + faceNum)))
             {
                 TetIndex thisIndex = nextIndex++;
-                attachNewTet(polytet[thisIndex], polytet[index], faceNum);
+                attachNewTet<true, true>(polytet[thisIndex], polytet[index], faceNum);
                 uncompressHelper(polytet, thisIndex, nextIndex);
             }
         }
@@ -758,8 +759,8 @@ int main(int argc, char *argv[])
 
         Polytet polytet;
         polytet.reserve(tetCount); // Important, to ensure pointers don't change
-        Tet &t0    = polytet.emplace_back(start);
-        attachNewTet(polytet.emplace_back(), t0, 3);
+        Tet &t0                = polytet.emplace_back(start);
+        attachNewTet<true, true>(polytet.emplace_back(), t0, 3);
 
         polytet.resize(tetCount);
         polytetChiralCount = 0;
@@ -789,7 +790,7 @@ int main(int argc, char *argv[])
                 {
                     if (tetToAttachTo.faceAttached[faceNum])
                         continue;
-                    attachNewTet(newTet, tetToAttachTo, faceNum);
+                    attachNewTet<true, false>(newTet, tetToAttachTo, faceNum);
                     // Canonicalize the rotation of this new polytet in compressed form, so that it can be compared against others
                     bool haveRunningLeast[2] = {false, false};
                     CompressedPolytet runningLeastPolytet[2];
@@ -843,7 +844,8 @@ int main(int argc, char *argv[])
                         index = (HashIndex*)((uint8_t*)entry + newPolytetsCompressedSize);
                     }
                     // Check for overlap between this newly attached tetrahedron and the existing ones,
-                    // and defer this until after the deduplication, to save a lot of time
+                    // having deferred this until after the deduplication, to save a lot of time
+                    attachNewTet<false, true>(newTet, tetToAttachTo, faceNum); // defer calculation of coordinates, too
                     overlap.setA(newTet.t);
                     // Set up the "skipOverlapCheck" flags to skip overlap checking up to a depth of 5
                     for (auto tetCheckIntersection=polytet.begin(); tetCheckIntersection!=polytet.end(); ++tetCheckIntersection)
