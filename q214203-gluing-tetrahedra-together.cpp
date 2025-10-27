@@ -11,7 +11,9 @@
 #define MEMORY_POOL_GROW_RATIO 1/16  // what proportion of the memory size to grow it by when more space is needed
 #define HASH_TABLE_RATIO 6
 #define SHOW_PROGRESS 16  // if defined, show progress starting at this term
-//#define KEEP_GOING
+
+#define MAXIMUM_TETCOUNT 17
+//#define MAXIMUM_TETCOUNT 28
 
 #define WRITE_TO_FILES
 #define RESUME_FROM_FILE
@@ -36,9 +38,9 @@ void quitMemory()
 
 typedef uint8_t TetIndex;
 
-#ifdef KEEP_GOING
+#if MAXIMUM_TETCOUNT > 17
 typedef uint64_t HashIndex;
-#else // just large enough for tetCount==17
+#else
 typedef uint32_t HashIndex;
 #endif
 
@@ -741,10 +743,8 @@ int main(int argc, char *argv[])
         prevPolytetCount = polytetCount;
         if (++tetCount <= 2)
             continue;
-#ifndef KEEP_GOING
-        if (tetCount > 17)
+        if (tetCount > MAXIMUM_TETCOUNT)
             break;
-#endif
 
         int basePolytetCompressedSize = ((tetCount - 3) * 3 + 8-1) / 8;
         size_t hashTableSize = polytetCount * HASH_TABLE_RATIO;
