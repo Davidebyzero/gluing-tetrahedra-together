@@ -16,7 +16,7 @@
 #define WRITE_TO_FILES
 #define RESUME_FROM_FILE
 
-#define FILE_CHUNK_SIZE (1 << 31)  // needs to be less than 1<<32
+#define FILE_CHUNK_SIZE (1uLL << 31)  // needs to be less than 1<<31
 
 #ifdef USE_GMP
 #   include <gmp.h>
