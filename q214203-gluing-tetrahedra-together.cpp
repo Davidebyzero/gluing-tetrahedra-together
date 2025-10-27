@@ -143,7 +143,12 @@ static const int tetrahedronEdges[6][2] =
     {2, 3},
 };
 
-uint8_t vertexMapTable[4][4];
+struct RotationTable
+{
+    uint8_t faceMap[3];
+    uint8_t rotation[3];
+};
+RotationTable rotationTable[4];
 
 void initLookupTables()
 {
@@ -159,8 +164,24 @@ void initLookupTables()
     }
 #endif
     for (int i=0; i<4; i++)
+    {
+        int vertexMap[4];
         for (int j=0; j<4; j++)
-            vertexMapTable[i][tetrahedronFaces[3][j]] = tetrahedronFaces[i][j];
+        {
+            int vertexNum = tetrahedronFaces[3][j];
+            vertexMap[vertexNum] = tetrahedronFaces[i][j];
+            if (vertexNum != 0)
+                rotationTable[i].faceMap[3 - vertexNum] = 3 - tetrahedronFaces[i][j];
+        }
+        for (int rotatedFaceNum=0; rotatedFaceNum<3; rotatedFaceNum++)
+        {
+            int faceNum = rotationTable[i].faceMap[rotatedFaceNum];
+            int rotation = 0;
+            while (vertexMap[tetrahedronFaces[rotatedFaceNum][rotation]] != tetrahedronFaces[faceNum][0])
+                rotation++;
+            rotationTable[i].rotation[rotatedFaceNum] = rotation;
+        }
+    }
 }
 
 #ifndef USE_GMP
@@ -515,7 +536,7 @@ class CompressedPolytet
 public:
     CompressedPolytetBits value;
     CompressedPolytet() : value(0) {}
-    void append(Polytet &polytet, Tet &tetToCompress, const uint8_t *vertexMap, int faceRotation, int reflect)
+    void append(Polytet &polytet, Tet &tetToCompress, const RotationTable *thisRotationTable, int faceRotation, int reflect)
     // indices of vertexMap[] are compressed-output vertices; elements of vertexMap[] are the original vertices of tetToCompress
     {
         tetToCompress.assignIndex(polytet.nextIndex);
@@ -539,7 +560,7 @@ public:
             };
             int rotatedFaceNum = faceRotateReflect[reflect][_faceNum][faceRotation];
 #endif
-            int faceNum = 3 - vertexMap[3 - rotatedFaceNum];
+            int faceNum = thisRotationTable->faceMap[rotatedFaceNum];
             Tet *attachedTet = tetToCompress.faceAttached[faceNum];
             if (!attachedTet)
                 continue;
@@ -547,10 +568,8 @@ public:
             value |= (CompressedPolytetBits)1 << ((tetToCompress.index - 1 - 1) * 3 + _faceNum);
 
             int attachedFace = tetToCompress.faceAttachedFace[faceNum];
-            int rotation = 0;
-            while (vertexMap[tetrahedronFaces[rotatedFaceNum][rotation]] != tetrahedronFaces[faceNum][0])
-                rotation++;
-            append(polytet, *attachedTet, vertexMapTable[attachedFace], rotation, reflect);
+            int rotation = thisRotationTable->rotation[rotatedFaceNum];
+            append(polytet, *attachedTet, &rotationTable[attachedFace], rotation, reflect);
         }
     }
     void uncompress(Polytet &polytet)
@@ -797,7 +816,7 @@ int main(int argc, char *argv[])
                     Tet *t = &polytet[1];
                     for (int i=0; i<tetCount; i++)
                     {
-                        const uint8_t *vertexMap;
+                        const RotationTable *thisRotationTable;
                         {
                             Tet &singlyAttachedTet = polytet[i];
                             for (int j=0; j<3; j++)
@@ -805,14 +824,14 @@ int main(int argc, char *argv[])
                                     goto skipThisTet; // not a singly attached tet
                             t = singlyAttachedTet.faceAttached[3];
                             int attachedFace = singlyAttachedTet.faceAttachedFace[3];
-                            vertexMap = vertexMapTable[attachedFace];
+                            thisRotationTable = &rotationTable[attachedFace];
                         }
                         for (int reflect=0; reflect<2; reflect++)
                         for (int rotationStep=0; rotationStep<3; rotationStep++)
                         {
                             polytet.resetIndexing(i);
                             CompressedPolytet newRotatedPolytet;
-                            newRotatedPolytet.append(polytet, *t, vertexMap, rotationStep, reflect);
+                            newRotatedPolytet.append(polytet, *t, thisRotationTable, rotationStep, reflect);
 
                             // Update the running "least" rotation
                             if (!haveRunningLeast[reflect] || newRotatedPolytet.value < runningLeastPolytet[reflect].value)
