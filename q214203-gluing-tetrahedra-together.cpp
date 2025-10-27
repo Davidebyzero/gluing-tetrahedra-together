@@ -44,7 +44,11 @@ typedef uint64_t HashIndex;
 typedef uint32_t HashIndex;
 #endif
 
+#if MAXIMUM_TETCOUNT > 23
 typedef unsigned __int128 CompressedPolytetBits; // Can handle up to 44 terms, while a 64-bit size_t can only handle up to about 28 terms
+#else
+typedef uint64_t          CompressedPolytetBits; // Can handle up to 23 terms
+#endif
 
 #ifdef USE_GMP
 class Tetrahedron
@@ -587,7 +591,9 @@ public:
     size_t hash() const
     {
         std::size_t seed  = std::hash<uint64_t>{}(((uint64_t*)&value)[0]);
+#if MAXIMUM_TETCOUNT > 23
         {         } seed ^= std::hash<uint64_t>{}(((uint64_t*)&value)[1]) + (seed << 6) + (seed >> 2);
+#endif
         return seed;
     }
 };
