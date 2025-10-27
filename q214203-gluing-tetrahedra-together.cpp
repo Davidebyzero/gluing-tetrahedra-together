@@ -238,43 +238,27 @@ private:
         mpz_addmul(result, _a[1], _b[1]);
         mpz_addmul(result, _a[2], _b[2]);
     }
+    template <void (*MPZ_CALL)(mpz_t x), void (*MPZ_CALLS)(mpz_t x, ...)> void mpz_initOrClear()
+    {
+        MPZ_CALLS(intersectNumerator, intersectDenominator, uNumerator, vNumerator, uvDenominator, uvNumeratorSum, NULL);
+        for (int d=0; d<3; d++)
+        {
+            MPZ_CALL(center[d]);
+            MPZ_CALL(normal[d]);
+            MPZ_CALL(tmp[d]);
+            MPZ_CALL(p0p1[d]);
+            MPZ_CALL(intersectionPoint[d]);
+            MPZ_CALL(delta[d]);
+            MPZ_CALL(edge1[d]);
+            MPZ_CALL(edge2[d]);
+        }
+        for (int p=0; p<3; p++)
+            for (int d=0; d<3; d++)
+                MPZ_CALL(triangle[p][d]);
+    }
 public:
-    TetrahedronOverlap()
-    {
-        mpz_inits(intersectNumerator, intersectDenominator, uNumerator, vNumerator, uvDenominator, uvNumeratorSum, NULL);
-        for (int d=0; d<3; d++)
-        {
-            mpz_init(center[d]);
-            mpz_init(normal[d]);
-            mpz_init(tmp[d]);
-            mpz_init(p0p1[d]);
-            mpz_init(intersectionPoint[d]);
-            mpz_init(delta[d]);
-            mpz_init(edge1[d]);
-            mpz_init(edge2[d]);
-        }
-        for (int p=0; p<3; p++)
-            for (int d=0; d<3; d++)
-                mpz_init(triangle[p][d]);
-    }
-    ~TetrahedronOverlap()
-    {
-        mpz_clears(intersectNumerator, intersectDenominator, uNumerator, vNumerator, uvDenominator, uvNumeratorSum, NULL);
-        for (int d=0; d<3; d++)
-        {
-            mpz_clear(center[d]);
-            mpz_clear(normal[d]);
-            mpz_clear(tmp[d]);
-            mpz_clear(p0p1[d]);
-            mpz_clear(intersectionPoint[d]);
-            mpz_clear(delta[d]);
-            mpz_clear(edge1[d]);
-            mpz_clear(edge2[d]);
-        }
-        for (int p=0; p<3; p++)
-            for (int d=0; d<3; d++)
-                mpz_clear(triangle[p][d]);
-    }
+     TetrahedronOverlap() {mpz_initOrClear<mpz_init , mpz_inits >();}
+    ~TetrahedronOverlap() {mpz_initOrClear<mpz_clear, mpz_clears>();}
     bool operator()(const mpz_t maximalTouchingSqrDistance)
     {
         // Skip the longer overlap checking algorithm if the two tetrahedrons' centers are sufficiently separated.
