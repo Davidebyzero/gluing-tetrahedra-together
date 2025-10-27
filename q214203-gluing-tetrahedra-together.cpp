@@ -12,8 +12,7 @@
 #define HASH_TABLE_RATIO 6
 #define SHOW_PROGRESS 16  // if defined, show progress starting at this term
 
-#define MAXIMUM_TETCOUNT 17
-//#define MAXIMUM_TETCOUNT 28
+#define MAXIMUM_TETCOUNT 17 // 28
 
 #define WRITE_TO_FILES
 #define RESUME_FROM_FILE
