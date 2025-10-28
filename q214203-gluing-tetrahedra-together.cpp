@@ -27,6 +27,8 @@
 #   endif
 #endif
 
+template <typename T, size_t N> size_t countof( T ( & arr )[ N ] ) {return std::extent< T[ N ] >::value;}
+
 auto startTime = std::chrono::steady_clock::now();
 
 void quitMemory()
@@ -372,7 +374,7 @@ public:
                 }
             }
             std::swap(a, b);
-            maxEdgeNum = _countof(tetrahedronEdges); // disable the optimization for when "b" is the newly added tetrahedron
+            maxEdgeNum = countof(tetrahedronEdges); // disable the optimization for when "b" is the newly added tetrahedron
         }
         return false;
     }
@@ -464,7 +466,7 @@ public:
                 }
             }
             std::swap(a, b);
-            maxEdgeNum = _countof(tetrahedronEdges); // disable the optimization for when "b" is the newly added tetrahedron
+            maxEdgeNum = countof(tetrahedronEdges); // disable the optimization for when "b" is the newly added tetrahedron
         }
         return false;
     }
