@@ -299,7 +299,8 @@ public:
                     // For speed, process only one out of every pair of attached faces (which share the exact same 3 vertices).
                     // This will still process the very first attached face twice, since that is a face[3] attached to another face[3],
                     // but it's probably not worth the extra machinery that would be necessary to special-case that.
-                    if (!swapped && faceNum!=3 && b->faceAttached[faceNum])
+                    if (swapped ? faceNum==3
+                                : faceNum!=3 && b->faceAttached[faceNum])
                         continue;
                     const mpz_t *normalizedTetrahedron[4][3]; // first 3 points are the face, and the 4th point is for calculating the normal
                     for (int i=0; i<4; i++)
@@ -414,7 +415,8 @@ public:
                     // For speed, process only one out of every pair of attached faces (which share the exact same 3 vertices).
                     // This will still process the very first attached face twice, since that is a face[3] attached to another face[3],
                     // but it's probably not worth the extra machinery that would be necessary to special-case that.
-                    if (!swapped && faceNum!=3 && b->faceAttached[faceNum])
+                    if (swapped ? faceNum==3
+                                : faceNum!=3 && b->faceAttached[faceNum])
                         continue;
                     Tetrahedron normalizedTetrahedron; // first 3 points are the face, and the 4th point is for calculating the normal
                     for (int i=0; i<4; i++)
