@@ -454,6 +454,7 @@ public:
 
 void attachNewTet(Tet &t, Tet &tetToAttachTo, const int faceNum)
 {
+#if 0
 #ifdef USE_GMP
     mpz_t *newVertex = t.t.t[0];
     // Get center of face by averaging its vertices' coordinates.
@@ -495,6 +496,7 @@ void attachNewTet(Tet &t, Tet &tetToAttachTo, const int faceNum)
             t.t[1+p][d] = tetToAttachTo.t[p1][d];
 #endif
     }
+#endif
     t.faceAttached    [0] = NULL;
     t.faceAttached    [1] = NULL;
     t.faceAttached    [2] = NULL;
@@ -596,6 +598,7 @@ void mul_start_3(Tetrahedron &start, mpz_t maximalTouchingSqrDistance)
 void mul_start_3(Tetrahedron &start, Coord &maximalTouchingSqrDistance)
 #endif
 {
+#if 0
     for (int p=0; p<4; p++)
         for (int d=0; d<3; d++)
 #ifdef USE_GMP
@@ -607,6 +610,7 @@ void mul_start_3(Tetrahedron &start, Coord &maximalTouchingSqrDistance)
     mpz_mul_ui(maximalTouchingSqrDistance, maximalTouchingSqrDistance, 3*3);
 #else
     maximalTouchingSqrDistance *= 3*3;
+#endif
 #endif
 }
 
@@ -850,6 +854,7 @@ int main(int argc, char *argv[])
                             goto skipDuplicate;
                         index = (HashIndex*)((uint8_t*)entry + newPolytetsCompressedSize);
                     }
+#if 0
                     // Check for overlap between this newly attached tetrahedron and the existing ones,
                     // and defer this until after the deduplication, to save a lot of time
                     overlap.setA(newTet.t);
@@ -868,6 +873,7 @@ int main(int argc, char *argv[])
                             goto skipDueToOverlap;
                         }
                     }
+#endif
                     // No overlap found, so add runningLeastPolytet[0] to hash table and chiral count
                     polytetChiralCount += isChiral;
                     if ((uint8_t*)entry + polytetTableElementSize - (uint8_t*)pool > poolSize)
