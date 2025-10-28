@@ -11,6 +11,7 @@
 #define MEMORY_POOL_GROW_RATIO 1/16  // what proportion of the memory size to grow it by when more space is needed
 #define HASH_TABLE_RATIO 6
 #define SHOW_PROGRESS 16  // if defined, show progress starting at this term
+//#define PRINT_POLYTETS // requires USE_GMP
 
 #define MAXIMUM_TETCOUNT 17 // 28
 
@@ -599,6 +600,24 @@ public:
     }
 };
 
+#ifdef USE_GMP
+void printPolytet(Polytet &polytet)
+{
+    bool first = true;
+    for (auto thisTet=polytet.cbegin(); thisTet!=polytet.cend(); ++thisTet)
+    {
+        printf(first ? "{" : ",\n");
+        first = false;
+        gmp_printf("{{%Zd, %Zd, %Zd}, {%Zd, %Zd, %Zd}, {%Zd, %Zd, %Zd}, {%Zd, %Zd, %Zd}}",
+            thisTet->t.t[0][0], thisTet->t.t[0][1], thisTet->t.t[0][2],
+            thisTet->t.t[1][0], thisTet->t.t[1][1], thisTet->t.t[1][2],
+            thisTet->t.t[2][0], thisTet->t.t[2][1], thisTet->t.t[2][2],
+            thisTet->t.t[3][0], thisTet->t.t[3][1], thisTet->t.t[3][2]);
+    }
+    printf("}\n\n");
+}
+#endif
+
 #if defined(WRITE_TO_FILES) || defined(RESUME_FROM_FILE)
 const char *getCompressedPolytetFilename(int tetCount)
 {
@@ -887,6 +906,9 @@ int main(int argc, char *argv[])
                         }
                     }
                     // No overlap found, so add runningLeastPolytet[0] to hash table and chiral count
+#if defined(USE_GMP) && defined(PRINT_POLYTETS)
+                    printPolytet(polytet);
+#endif
                     polytetChiralCount += isChiral;
                     if ((uint8_t*)entry + polytetTableElementSize - (uint8_t*)pool > poolSize)
                     {
