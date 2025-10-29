@@ -52,6 +52,8 @@ typedef unsigned __int128 CompressedPolytetBits; // Can handle up to 44 terms, w
 typedef uint64_t          CompressedPolytetBits; // Can handle up to 23 terms
 #endif
 
+typedef uint64_t CompressedSubpolytet; // compressed in branchless format; for caching known-overlapping subpolytet paths
+
 #ifdef USE_GMP
 class Tetrahedron
 {
@@ -96,7 +98,7 @@ public:
     Tet    *faceAttached    [4];
     uint8_t faceAttachedFace[4];
     TetIndex index; // 1-based; 0=unassigned
-    bool skipOverlapCheck;
+    CompressedSubpolytet compressedPath; // 0 = skip overlap check
     Tet(                    ) : t( ) {initFaces();}
     Tet(const Tetrahedron &t) : t(t) {initFaces();}
     void assignIndex(TetIndex &nextIndex)
@@ -104,19 +106,7 @@ public:
         if (index == 0)
             index = nextIndex++;
     }
-    void tagSkipOverlapCheck(int depth)
-    {
-        if (skipOverlapCheck)
-            return;
-        skipOverlapCheck = true;
-        if (--depth <= 0)
-            return;
-        for (int faceNum=0; faceNum<4; faceNum++)
-        {
-            if (auto attached = faceAttached[faceNum])
-                attached->tagSkipOverlapCheck(depth);
-        }
-    }
+    void tagSkipOverlapCheck(int depth, int fromFaceNum = -1, CompressedSubpolytet curCompressedPath = 0, CompressedSubpolytet trit = 1);
 };
 class Polytet : public std::vector<Tet>
 {
@@ -604,6 +594,19 @@ public:
     }
 };
 
+void Tet::tagSkipOverlapCheck(int depth, int fromFaceNum/* = -1*/, CompressedSubpolytet curCompressedPath/* = 0*/, CompressedSubpolytet trit/* = 1*/)
+{
+    depth--;
+    compressedPath = depth < 0 ? curCompressedPath : UINT64_MAX;
+    for (int faceNum=0; faceNum<4; faceNum++)
+    {
+        if (faceNum == fromFaceNum)
+            continue;
+        if (auto attached = faceAttached[faceNum])
+            attached->tagSkipOverlapCheck(depth, faceAttachedFace[faceNum], curCompressedPath + trit * faceNum, trit * 3);
+    }
+}
+
 #ifdef USE_GMP
 void printPolytet(Polytet &polytet)
 {
@@ -895,12 +898,10 @@ int main(int argc, char *argv[])
                     // and defer this until after the deduplication, to save a lot of time
                     overlap.setA(newTet);
                     // Set up the "skipOverlapCheck" flags to skip overlap checking up to a depth of 5
-                    for (auto tetCheckIntersection=polytet.begin(); tetCheckIntersection!=polytet.end(); ++tetCheckIntersection)
-                        (*tetCheckIntersection).skipOverlapCheck = false;
                     newTet.tagSkipOverlapCheck(minOverlapDepth);
                     for (auto tetCheckIntersection=polytet.cbegin(); tetCheckIntersection!=polytet.cend(); ++tetCheckIntersection)
                     {
-                        if ((*tetCheckIntersection).skipOverlapCheck)
+                        if ((*tetCheckIntersection).compressedPath == UINT64_MAX)
                             continue; // skip this check for speed (it'll always be false anyway)
                         overlap.setB(*tetCheckIntersection);
                         if (overlap(maximalTouchingSqrDistance))
