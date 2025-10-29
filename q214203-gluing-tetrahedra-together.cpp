@@ -104,18 +104,13 @@ public:
         if (index == 0)
             index = nextIndex++;
     }
-    void tagSkipOverlapCheck(int depth)
+    void tagSkipOverlapCheck(int depth, int fromFaceNum = -1)
     {
-        if (skipOverlapCheck)
-            return;
-        skipOverlapCheck = true;
-        if (--depth <= 0)
-            return;
+        skipOverlapCheck = --depth >= 0;
         for (int faceNum=0; faceNum<4; faceNum++)
-        {
-            if (auto attached = faceAttached[faceNum])
-                attached->tagSkipOverlapCheck(depth);
-        }
+            if (faceNum != fromFaceNum)
+                if (auto attached = faceAttached[faceNum])
+                    attached->tagSkipOverlapCheck(depth, faceAttachedFace[faceNum]);
     }
 };
 class Polytet : public std::vector<Tet>
@@ -895,8 +890,6 @@ int main(int argc, char *argv[])
                     // and defer this until after the deduplication, to save a lot of time
                     overlap.setA(newTet);
                     // Set up the "skipOverlapCheck" flags to skip overlap checking up to a depth of 5
-                    for (auto tetCheckIntersection=polytet.begin(); tetCheckIntersection!=polytet.end(); ++tetCheckIntersection)
-                        (*tetCheckIntersection).skipOverlapCheck = false;
                     newTet.tagSkipOverlapCheck(minOverlapDepth);
                     for (auto tetCheckIntersection=polytet.cbegin(); tetCheckIntersection!=polytet.cend(); ++tetCheckIntersection)
                     {
