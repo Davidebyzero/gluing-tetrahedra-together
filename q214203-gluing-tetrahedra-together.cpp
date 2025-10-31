@@ -710,9 +710,15 @@ int main(int argc, char *argv[])
     static Coord maximalTouchingSqrDistance = MAXIMAL_TOUCHING_SQR_DISTANCE;
 #endif
 
-    bool *overlapBitmap = (bool*)malloc(1594323);
-    memset(overlapBitmap, 0, 1594323);
     CompressedSubpolytet minUnseenCompressedSubpolytet = 1;
+    bool *overlapBitmap;
+    {
+        size_t overlapBitmapSize = 1;
+        for (int i=0; i<MAXIMUM_TETCOUNT-2; i++)
+            overlapBitmapSize *= 3;
+        overlapBitmap = (bool*)malloc(overlapBitmapSize);
+        memset(overlapBitmap, 0, overlapBitmapSize);
+    }
 
     size_t poolSize;
     void *pool = NULL;
@@ -1021,6 +1027,7 @@ int main(int argc, char *argv[])
     }
 
     free(pool);
+    free(overlapBitmap);
 #ifdef USE_GMP
     mpz_clear(maximalTouchingSqrDistance);
 #endif
