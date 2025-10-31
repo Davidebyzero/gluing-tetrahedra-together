@@ -711,12 +711,13 @@ int main(int argc, char *argv[])
 #endif
 
     CompressedSubpolytet minUnseenCompressedSubpolytet = 0;
-    bool *overlapBitmap;
+    uint8_t *overlapBitmap;
     {
         size_t overlapBitmapSize = 1;
         for (int i=0; i<MAXIMUM_TETCOUNT-2; i++)
             overlapBitmapSize *= 3;
-        overlapBitmap = (bool*)malloc(overlapBitmapSize);
+        overlapBitmapSize = (overlapBitmapSize + 8-1) / 8;
+        overlapBitmap = (uint8_t*)malloc(overlapBitmapSize);
         memset(overlapBitmap, 0, overlapBitmapSize);
     }
 
@@ -937,7 +938,7 @@ int main(int argc, char *argv[])
                             overlap.setB(*tetCheckIntersection);
                             if (overlap(maximalTouchingSqrDistance))
                             {
-                                overlapBitmap[compressedPath - 1] = true;
+                                overlapBitmap[(compressedPath - 1) / 8] |= 1 << ((compressedPath - 1) % 8);
 
                                 CompressedSubpolytet compressedPathReflected = 0, trit = 1;
                                 while (compressedPath)
@@ -950,7 +951,7 @@ int main(int argc, char *argv[])
                                     compressedPath /= 3;
                                     trit *= 3;
                                 }
-                                overlapBitmap[compressedPathReflected - 1] = true;
+                                overlapBitmap[(compressedPathReflected - 1) / 8] |= 1 << ((compressedPathReflected - 1) % 8);
 
                                 foundOverlaps = true;
                                 goto skipDueToOverlap;
@@ -958,7 +959,7 @@ int main(int argc, char *argv[])
                         }
                         else
                         {
-                            if (overlapBitmap[compressedPath - 1])
+                            if (overlapBitmap[(compressedPath - 1) / 8] & (1 << ((compressedPath - 1) % 8)))
                             {
                                 foundOverlaps = true;
                                 goto skipDueToOverlap;
