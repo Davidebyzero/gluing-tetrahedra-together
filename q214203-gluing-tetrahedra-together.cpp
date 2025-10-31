@@ -718,6 +718,7 @@ int main(int argc, char *argv[])
             overlapBitmapSize *= 3;
         overlapBitmap = (bool*)malloc(overlapBitmapSize);
         memset(overlapBitmap, 0, overlapBitmapSize);
+        std::cout << "Allocated " << overlapBitmapSize << " bytes for overlap caching" << std::endl;
     }
 
     size_t poolSize;
