@@ -52,6 +52,8 @@ typedef unsigned __int128 CompressedPolytetBits; // Can handle up to 44 terms, w
 typedef uint64_t          CompressedPolytetBits; // Can handle up to 23 terms
 #endif
 
+typedef uint64_t CompressedSubpolytet; // compressed in branchless format; for caching known-overlapping subpolytet paths
+
 #ifdef USE_GMP
 class Tetrahedron
 {
@@ -91,12 +93,13 @@ class Tet
         faceAttached[2] = NULL; // t[0],t[2],t[3]
         faceAttached[3] = NULL; // t[1],t[2],t[3]
     }
+    void tagSkipOverlapCheckHelper(int depth, const struct RotationTable *thisRotationTable, int faceRotation = 0, CompressedSubpolytet curCompressedPath = 0, CompressedSubpolytet trit = 1);
 public:
     Tetrahedron t;
     Tet    *faceAttached    [4];
     uint8_t faceAttachedFace[4];
     TetIndex index; // 1-based; 0=unassigned
-    bool skipOverlapCheck;
+    CompressedSubpolytet compressedPath; // 0 = skip overlap check
     Tet(                    ) : t( ) {initFaces();}
     Tet(const Tetrahedron &t) : t(t) {initFaces();}
     void assignIndex(TetIndex &nextIndex)
@@ -104,19 +107,7 @@ public:
         if (index == 0)
             index = nextIndex++;
     }
-    void tagSkipOverlapCheck(int depth)
-    {
-        if (skipOverlapCheck)
-            return;
-        skipOverlapCheck = true;
-        if (--depth <= 0)
-            return;
-        for (int faceNum=0; faceNum<4; faceNum++)
-        {
-            if (auto attached = faceAttached[faceNum])
-                attached->tagSkipOverlapCheck(depth);
-        }
-    }
+    void tagSkipOverlapCheck(int depth);
 };
 class Polytet : public std::vector<Tet>
 {
@@ -530,6 +521,20 @@ void attachNewTet(Tet &t, Tet &tetToAttachTo, const int faceNum)
     tetToAttachTo.faceAttachedFace[faceNum] = 3;
 }
 
+static const int faceRotateReflect[2][3][3] =
+{
+    {
+        {0, 1, 2},
+        {1, 2, 0},
+        {2, 0, 1},
+    },
+    {
+        {1, 2, 0},
+        {0, 1, 2},
+        {2, 0, 1},
+    },
+};
+
 // First two tetrahedrons are implied. Each element is a subsequent tetrahedron, with the value indicating where
 // it's attached. The lower 2 bits indicate which face (can only have 3 different values, because at least 1 face
 // will always already be attached). The remaining bits indicate which tetrahedron (which can never be zero,
@@ -560,19 +565,6 @@ public:
 #if 0
             int rotatedFaceNum = ((reflect ? _faceNum ^ (_faceNum <= 1) : _faceNum) + faceRotation) % 3;
 #else
-            static const int faceRotateReflect[2][3][3] =
-            {
-                {
-                    {0, 1, 2},
-                    {1, 2, 0},
-                    {2, 0, 1},
-                },
-                {
-                    {1, 2, 0},
-                    {0, 1, 2},
-                    {2, 0, 1},
-                },
-            };
             int rotatedFaceNum = faceRotateReflect[reflect][_faceNum][faceRotation];
 #endif
             int faceNum = thisRotationTable->faceMap[rotatedFaceNum];
@@ -607,6 +599,31 @@ public:
     }
 };
 
+void Tet::tagSkipOverlapCheckHelper(int depth, const RotationTable *thisRotationTable, int faceRotation/* = 0*/, CompressedSubpolytet curCompressedPath/* = 0*/, CompressedSubpolytet trit/* = 1*/)
+{
+    depth--;
+    compressedPath = depth < 0 ? curCompressedPath : UINT64_MAX;
+    for (int _faceNum=0; _faceNum<3; _faceNum++)
+    {
+        int rotatedFaceNum = faceRotateReflect[0][_faceNum][faceRotation];
+        int faceNum = thisRotationTable->faceMap[rotatedFaceNum];
+        Tet *attachedTet = faceAttached[faceNum];
+        if (!attachedTet)
+            continue;
+        int attachedFace = faceAttachedFace[faceNum];
+        int rotation = thisRotationTable->rotation[rotatedFaceNum];
+        attachedTet->tagSkipOverlapCheckHelper(depth, &rotationTable[attachedFace], rotation, curCompressedPath + trit * (_faceNum + 1), trit * 3);
+    }
+}
+void Tet::tagSkipOverlapCheck(int depth)
+{
+    depth--;
+    compressedPath = UINT64_MAX;
+    Tet *t = faceAttached[3];
+    int attachedFace = faceAttachedFace[3];
+    t->tagSkipOverlapCheckHelper(depth, &rotationTable[attachedFace]);
+}
+
 #ifdef USE_GMP
 void printPolytet(Polytet &polytet)
 {
@@ -635,9 +652,9 @@ const char *getCompressedPolytetFilename(int tetCount)
 #endif
 
 #ifdef USE_GMP
-void mul_start_3(Tetrahedron &start, mpz_t maximalTouchingSqrDistance)
+void mul_start_3(Tetrahedron &start, mpz_t maximalTouchingSqrDistance, CompressedSubpolytet &minUnseenCompressedSubpolytet)
 #else
-void mul_start_3(Tetrahedron &start, Coord &maximalTouchingSqrDistance)
+void mul_start_3(Tetrahedron &start, Coord &maximalTouchingSqrDistance, CompressedSubpolytet &minUnseenCompressedSubpolytet)
 #endif
 {
     for (int p=0; p<4; p++)
@@ -652,6 +669,7 @@ void mul_start_3(Tetrahedron &start, Coord &maximalTouchingSqrDistance)
 #else
     maximalTouchingSqrDistance *= 3*3;
 #endif
+    minUnseenCompressedSubpolytet = minUnseenCompressedSubpolytet * 3 + 1;
 }
 
 int main(int argc, char *argv[])
@@ -692,6 +710,10 @@ int main(int argc, char *argv[])
     static Coord maximalTouchingSqrDistance = MAXIMAL_TOUCHING_SQR_DISTANCE;
 #endif
 
+    bool *overlapBitmap = (bool*)malloc(1594323);
+    memset(overlapBitmap, 0, 1594323);
+    CompressedSubpolytet minUnseenCompressedSubpolytet = 1;
+
     size_t poolSize;
     void *pool = NULL;
 
@@ -714,7 +736,7 @@ int main(int argc, char *argv[])
                 if (resumeFile) fclose(resumeFile);
                 resumeFile = f;
                 tetCount = i;
-                mul_start_3(start, maximalTouchingSqrDistance);
+                mul_start_3(start, maximalTouchingSqrDistance, minUnseenCompressedSubpolytet);
             }
             else
                 break;
@@ -898,18 +920,43 @@ int main(int argc, char *argv[])
                     // and defer this until after the deduplication, to save a lot of time
                     overlap.setA(newTet);
                     // Set up the "skipOverlapCheck" flags to skip overlap checking up to a depth of 5
-                    for (auto tetCheckIntersection=polytet.begin(); tetCheckIntersection!=polytet.end(); ++tetCheckIntersection)
-                        (*tetCheckIntersection).skipOverlapCheck = false;
                     newTet.tagSkipOverlapCheck(minOverlapDepth);
                     for (auto tetCheckIntersection=polytet.cbegin(); tetCheckIntersection!=polytet.cend(); ++tetCheckIntersection)
                     {
-                        if ((*tetCheckIntersection).skipOverlapCheck)
+                        if ((*tetCheckIntersection).compressedPath == UINT64_MAX)
                             continue; // skip this check for speed (it'll always be false anyway)
-                        overlap.setB(*tetCheckIntersection);
-                        if (overlap(maximalTouchingSqrDistance))
+                        CompressedSubpolytet compressedPath = tetCheckIntersection->compressedPath;
+                        if (compressedPath >= minUnseenCompressedSubpolytet)
                         {
-                            foundOverlaps = true;
-                            goto skipDueToOverlap;
+                            overlap.setB(*tetCheckIntersection);
+                            if (overlap(maximalTouchingSqrDistance))
+                            {
+                                overlapBitmap[(compressedPath - 1) / 3 - 1] = true;
+
+                                CompressedSubpolytet compressedPathReflected = 0, trit = 1;
+                                while (compressedPath)
+                                {
+                                    compressedPath--;
+                                    unsigned next = compressedPath % 3;
+                                    if (next < 2)
+                                        next ^= 1;
+                                    compressedPathReflected += (next + 1) * trit;
+                                    compressedPath /= 3;
+                                    trit *= 3;
+                                }
+                                overlapBitmap[(compressedPathReflected - 1) / 3 - 1] = true;
+
+                                foundOverlaps = true;
+                                goto skipDueToOverlap;
+                            }
+                        }
+                        else
+                        {
+                            if (overlapBitmap[(compressedPath - 1) / 3 - 1])
+                            {
+                                foundOverlaps = true;
+                                goto skipDueToOverlap;
+                            }
                         }
                     }
                     // No overlap found, so add runningLeastPolytet[0] to hash table and chiral count
@@ -968,7 +1015,7 @@ int main(int argc, char *argv[])
 #endif
 
         resumedFromFile = false;
-        mul_start_3(start, maximalTouchingSqrDistance);
+        mul_start_3(start, maximalTouchingSqrDistance, minUnseenCompressedSubpolytet);
         if (!foundOverlaps)
             minOverlapDepth++;
     }
