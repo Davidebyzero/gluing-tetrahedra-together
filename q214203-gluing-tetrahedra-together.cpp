@@ -144,6 +144,20 @@ static const int tetrahedronEdges[][2] =
     {2, 3},
 };
 
+static const int faceRotateReflect[2][3][3] =
+{
+    {
+        {0, 1, 2},
+        {1, 2, 0},
+        {2, 0, 1},
+    },
+    {
+        {1, 2, 0},
+        {0, 1, 2},
+        {2, 0, 1},
+    },
+};
+
 struct RotationTable
 {
     uint8_t faceMap[3];
@@ -520,20 +534,6 @@ void attachNewTet(Tet &t, Tet &tetToAttachTo, const int faceNum)
     tetToAttachTo.faceAttached    [faceNum] = &t;
     tetToAttachTo.faceAttachedFace[faceNum] = 3;
 }
-
-static const int faceRotateReflect[2][3][3] =
-{
-    {
-        {0, 1, 2},
-        {1, 2, 0},
-        {2, 0, 1},
-    },
-    {
-        {1, 2, 0},
-        {0, 1, 2},
-        {2, 0, 1},
-    },
-};
 
 // First two tetrahedrons are implied. Each element is a subsequent tetrahedron, with the value indicating where
 // it's attached. The lower 2 bits indicate which face (can only have 3 different values, because at least 1 face
