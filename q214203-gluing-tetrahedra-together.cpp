@@ -711,7 +711,7 @@ int main(int argc, char *argv[])
 #endif
 
     CompressedSubpolytet minUnseenCompressedSubpolytet = 0;
-    bool *overlapBitmap;
+    bool *overlapBitmap; // An actual bitmap was tried, and was a bit slower; so, we'll use 8 times as much RAM to get slightly better speed
     {
         size_t overlapBitmapSize = 1;
         for (int i=0; i<MAXIMUM_TETCOUNT-2; i++)
