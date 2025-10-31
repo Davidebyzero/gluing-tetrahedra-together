@@ -225,6 +225,9 @@ Coord dot(const Coord3 &a, const Coord3 &b)
 }
 #endif
 
+// This class must be used in exactly the way it is in this program. That is, setA() and setB() must be called first, before operator(),
+// and point to tetrahedrons in the same Polytet. The set(A) tetrahedron must be the last one newly attached to the polytet. If operator()
+// returns "true", both setA() and setB() must be called before the next operator() call.
 class TetrahedronOverlap
 {
     const Tet *a;
