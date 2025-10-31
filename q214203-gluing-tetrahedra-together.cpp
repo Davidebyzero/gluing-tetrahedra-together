@@ -710,7 +710,7 @@ int main(int argc, char *argv[])
     static Coord maximalTouchingSqrDistance = MAXIMAL_TOUCHING_SQR_DISTANCE;
 #endif
 
-    CompressedSubpolytet minUnseenCompressedSubpolytet = 1;
+    CompressedSubpolytet minUnseenCompressedSubpolytet = 0;
     bool *overlapBitmap;
     {
         size_t overlapBitmapSize = 1;
@@ -931,13 +931,13 @@ int main(int argc, char *argv[])
                     {
                         if ((*tetCheckIntersection).compressedPath == UINT64_MAX)
                             continue; // skip this check for speed (it'll always be false anyway)
-                        CompressedSubpolytet compressedPath = tetCheckIntersection->compressedPath;
+                        CompressedSubpolytet compressedPath = (tetCheckIntersection->compressedPath - 1) / 3;
                         if (compressedPath >= minUnseenCompressedSubpolytet)
                         {
                             overlap.setB(*tetCheckIntersection);
                             if (overlap(maximalTouchingSqrDistance))
                             {
-                                overlapBitmap[(compressedPath - 1) / 3 - 1] = true;
+                                overlapBitmap[compressedPath - 1] = true;
 
                                 CompressedSubpolytet compressedPathReflected = 0, trit = 1;
                                 while (compressedPath)
@@ -950,7 +950,7 @@ int main(int argc, char *argv[])
                                     compressedPath /= 3;
                                     trit *= 3;
                                 }
-                                overlapBitmap[(compressedPathReflected - 1) / 3 - 1] = true;
+                                overlapBitmap[compressedPathReflected - 1] = true;
 
                                 foundOverlaps = true;
                                 goto skipDueToOverlap;
@@ -958,7 +958,7 @@ int main(int argc, char *argv[])
                         }
                         else
                         {
-                            if (overlapBitmap[(compressedPath - 1) / 3 - 1])
+                            if (overlapBitmap[compressedPath - 1])
                             {
                                 foundOverlaps = true;
                                 goto skipDueToOverlap;
