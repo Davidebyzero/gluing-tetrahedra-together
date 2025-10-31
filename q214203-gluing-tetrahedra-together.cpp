@@ -371,7 +371,11 @@ public:
                         continue;
                     mpz_add(uvNumeratorSum, uNumerator, vNumerator);
                     if (mpz_cmp(uvNumeratorSum, uvDenominator) < 0)
+                    {
+                        if (swapped)
+                            std::swap(a, b);
                         return true;
+                    }
                 }
             }
             std::swap(a, b);
