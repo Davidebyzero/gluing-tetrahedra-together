@@ -227,11 +227,6 @@ Coord dot(const Coord3 &a, const Coord3 &b)
 
 class TetrahedronOverlap
 {
-    const Tet *a;
-    const Tet *b;
-public:
-    void setA(const Tet &x) {a = &x;}
-    void setB(const Tet &x) {b = &x;}
 #ifdef USE_GMP
 private:
     mpz_t intersectNumerator, intersectDenominator, uNumerator, vNumerator, uvDenominator, uvNumeratorSum;
@@ -264,7 +259,7 @@ private:
 public:
      TetrahedronOverlap() {mpz_initOrClear<mpz_init , mpz_inits >();}
     ~TetrahedronOverlap() {mpz_initOrClear<mpz_clear, mpz_clears>();}
-    bool operator()(const mpz_t maximalTouchingSqrDistance)
+    bool operator()(const Tet *a, const Tet *b, const mpz_t maximalTouchingSqrDistance)
     {
         // Skip the longer overlap checking algorithm if the two tetrahedrons' centers are sufficiently separated.
         // Get center of tetrahedron "a" by averaging its vertices' coordinates, without dividing by 4.
@@ -285,7 +280,7 @@ public:
         // In some circumstances, two tetrahedrons can intersect such that only the edges of one tetrahedron intersect with the
         // faces of the other, and not the other way around. So we need to check both.
         int maxEdgeNum = tetrahedronEdges_face3; // when "a" is the newly added tetrahedron, we can enable an optimization
-        for (int swapped=0; swapped<2; swapped++)
+        for (bool swapped = false;;)
         {
             // Take advantage of the fact that the two tetrahedrons are regular and congruent, and
             // just check if any edge of tetrahedron "a" intersects with any face of tetrahedron "b".
@@ -371,13 +366,12 @@ public:
                         continue;
                     mpz_add(uvNumeratorSum, uNumerator, vNumerator);
                     if (mpz_cmp(uvNumeratorSum, uvDenominator) < 0)
-                    {
-                        if (swapped)
-                            std::swap(a, b);
                         return true;
-                    }
                 }
             }
+            if (swapped)
+                break;
+            swapped = true;
             std::swap(a, b);
             maxEdgeNum = countof(tetrahedronEdges); // disable the optimization for when "b" is the newly added tetrahedron
         }
@@ -385,7 +379,7 @@ public:
     }
 #else
 public:
-    bool operator()(const Coord &maximalTouchingSqrDistance)
+    bool operator()(const Tet *a, const Tet *b, const Coord &maximalTouchingSqrDistance)
     {
         // Skip the longer overlap checking algorithm if the two tetrahedrons' centers are sufficiently separated.
         {
@@ -897,7 +891,6 @@ int main(int argc, char *argv[])
                     }
                     // Check for overlap between this newly attached tetrahedron and the existing ones,
                     // and defer this until after the deduplication, to save a lot of time
-                    overlap.setA(newTet);
                     // Set up the "skipOverlapCheck" flags to skip overlap checking up to a depth of 5
                     for (auto tetCheckIntersection=polytet.begin(); tetCheckIntersection!=polytet.end(); ++tetCheckIntersection)
                         (*tetCheckIntersection).skipOverlapCheck = false;
@@ -906,8 +899,7 @@ int main(int argc, char *argv[])
                     {
                         if ((*tetCheckIntersection).skipOverlapCheck)
                             continue; // skip this check for speed (it'll always be false anyway)
-                        overlap.setB(*tetCheckIntersection);
-                        if (overlap(maximalTouchingSqrDistance))
+                        if (overlap(&newTet, &*tetCheckIntersection, maximalTouchingSqrDistance))
                         {
                             foundOverlaps = true;
                             goto skipDueToOverlap;
