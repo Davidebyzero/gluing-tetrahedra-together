@@ -408,13 +408,13 @@ public:
         }
         // In some circumstances, two tetrahedrons can intersect such that only the edges of one tetrahedron intersect with the
         // faces of the other, and not the other way around. So we need to check both.
-        int maxEdgeNum = tetrahedronEdges_face3; // when "a" is the newly added tetrahedron, we can enable an optimization
-        for (int swapped=0; swapped<2; swapped++)
+        //int maxEdgeNum = tetrahedronEdges_face3; // when "a" is the newly added tetrahedron, we can enable an optimization
+        //for (int swapped=0; swapped<2; swapped++)
         {
             // Take advantage of the fact that the two tetrahedrons are regular and congruent, and
             // just check if any edge of tetrahedron "a" intersects with any face of tetrahedron "b".
             // Don't count it if only the endpoint of an edge intersects.
-            for (int edgeNum=0; edgeNum<maxEdgeNum; edgeNum++)
+            for (int edgeNum=0; edgeNum</*maxEdgeNum*/6; edgeNum++)
             {
                 Coord3 p0 = a->t[tetrahedronEdges[edgeNum][0]];
                 Coord3 p1 = a->t[tetrahedronEdges[edgeNum][1]];
@@ -423,8 +423,8 @@ public:
                     // For speed, process only one out of every pair of attached faces (which share the exact same 3 vertices).
                     // This will still process the very first attached face twice, since that is a face[3] attached to another face[3],
                     // but it's probably not worth the extra machinery that would be necessary to special-case that.
-                    if (swapped ? faceNum==3
-                                : faceNum!=3 && b->faceAttached[faceNum])
+                    if (/*swapped ? faceNum==3
+                                : */faceNum!=3 && b->faceAttached[faceNum])
                         continue;
                     Tetrahedron normalizedTetrahedron; // first 3 points are the face, and the 4th point is for calculating the normal
                     for (int i=0; i<4; i++)
@@ -476,7 +476,7 @@ public:
                 }
             }
             std::swap(a, b);
-            maxEdgeNum = countof(tetrahedronEdges); // disable the optimization for when "b" is the newly added tetrahedron
+            //maxEdgeNum = countof(tetrahedronEdges); // disable the optimization for when "b" is the newly added tetrahedron
         }
         return false;
     }
