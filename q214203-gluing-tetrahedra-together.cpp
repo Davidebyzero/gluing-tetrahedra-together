@@ -18,7 +18,7 @@
 #define WRITE_TO_FILES
 #define RESUME_FROM_FILE
 
-#define FILE_CHUNK_SIZE (1uLL << 31)  // needs to be less than 1<<31
+#define FILE_CHUNK_SIZE (1uLL << 30)  // needs to be less than 1<<31
 
 #ifdef USE_GMP
 #   include <gmp.h>
@@ -649,6 +649,43 @@ const char *getCompressedPolytetFilename(int tetCount)
     sprintf(filename, "polytets_compressed_term_%d.bin", tetCount);
     return filename;
 }
+
+void writeFile(const char *filename, uint8_t *ptr, size_t size)
+{
+    FILE *f = fopen(filename, "wb");
+    int fd = fileno(f);
+    while (size > FILE_CHUNK_SIZE)
+    {
+        write(fd, ptr, FILE_CHUNK_SIZE);
+        ptr  += FILE_CHUNK_SIZE;
+        size -= FILE_CHUNK_SIZE;
+    }
+    write(fd, ptr, (uint32_t)size);
+    fclose(f);
+}
+
+bool readAndCloseOpenedFile(FILE *f, uint8_t *ptr, size_t size)
+{
+    int fd = fileno(f);
+    lseek64(fd, 0, SEEK_SET);
+    while (size > FILE_CHUNK_SIZE)
+    {
+        if (read(fd, ptr, FILE_CHUNK_SIZE) != FILE_CHUNK_SIZE)
+        {
+            fclose(f);
+            return false;
+        }
+        ptr  += FILE_CHUNK_SIZE;
+        size -= FILE_CHUNK_SIZE;
+    }
+    if (read(fd, ptr, size) != size)
+    {
+        fclose(f);
+        return false;
+    }
+    fclose(f);
+    return true;
+}
 #endif
 
 #ifdef USE_GMP
@@ -733,12 +770,15 @@ int main(int argc, char *argv[])
     size_t memoryUsage = 0;
     
     int tetCount=1;
+    bool resumedFromFile = false;
+    size_t polytetChiralCount;
 #ifdef RESUME_FROM_FILE
     {
         FILE *resumeFile = NULL;
+        const char *filename;
         for (int i=3;; i++)
         {
-            if (FILE *f = fopen(getCompressedPolytetFilename(i), "rb"))
+            if (FILE *f = fopen(filename = getCompressedPolytetFilename(i), "rb"))
             {
                 if (resumeFile) fclose(resumeFile);
                 resumeFile = f;
@@ -763,17 +803,12 @@ int main(int argc, char *argv[])
             }
             int polytetsCompressedSize = ((tetCount - 2) * 3 + 8-1) / 8;
             polytetCount = size / polytetsCompressedSize;
-            int fd = fileno(resumeFile);
-            lseek64(fd, 0, SEEK_SET);
-            uint8_t *ptr = (uint8_t*)pool;
-            while (size > FILE_CHUNK_SIZE)
+            if (!readAndCloseOpenedFile(resumeFile, (uint8_t*)pool, size))
             {
-                read(fd, ptr, FILE_CHUNK_SIZE);
-                ptr  += FILE_CHUNK_SIZE;
-                size -= FILE_CHUNK_SIZE;
+                std::cerr << "Error reading file \"" << filename << "\"" << std::endl;
+                goto errorQuit;
             }
-            read(fd, ptr, size);
-            fclose(resumeFile);
+            resumedFromFile = true;
         }
     }
     if (!pool)
@@ -783,8 +818,7 @@ int main(int argc, char *argv[])
         if (!pool) quitMemory();
     }
 
-    bool resumedFromFile = tetCount > 1;
-    size_t polytetChiralCount = 0;
+    polytetChiralCount = 0;
     for (;;)
     {
         auto currentTime = std::chrono::steady_clock::now();
@@ -1007,18 +1041,7 @@ int main(int argc, char *argv[])
                 (uint8_t*)polytetTable + i * polytetTableElementSize, newPolytetsCompressedSize);
 
 #ifdef WRITE_TO_FILES
-        FILE *f = fopen(getCompressedPolytetFilename(tetCount), "wb");
-        int fd = fileno(f);
-        size_t size = polytetCount * newPolytetsCompressedSize;
-        uint8_t *ptr = basePolytetTable;
-        while (size > FILE_CHUNK_SIZE)
-        {
-            write(fd, ptr, FILE_CHUNK_SIZE);
-            ptr  += FILE_CHUNK_SIZE;
-            size -= FILE_CHUNK_SIZE;
-        }
-        write(fd, ptr, (uint32_t)size);
-        fclose(f);
+        writeFile(getCompressedPolytetFilename(tetCount), basePolytetTable, polytetCount * newPolytetsCompressedSize);
 #endif
 
         resumedFromFile = false;
@@ -1027,6 +1050,7 @@ int main(int argc, char *argv[])
             minOverlapDepth++;
     }
 
+errorQuit:
     free(pool);
     free(overlapBitmap);
 #ifdef USE_GMP
