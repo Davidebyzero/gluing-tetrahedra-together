@@ -758,14 +758,14 @@ int main(int argc, char *argv[])
 #endif
 
     CompressedSubpolytet minUnseenCompressedSubpolytet = 0;
-    bool *overlapBitmap; // An actual bitmap was tried, and was a bit slower; so, we'll use 8 times as much RAM to get slightly better speed
+    bool *overlapCache; // A bitmap (packed booleans) was tried, and was a bit slower; so, we'll use 8 times as much RAM to get slightly better speed
     {
-        size_t overlapBitmapSize = 0;
+        size_t overlapCacheSize = 0;
         for (int i=0; i<MAXIMUM_TETCOUNT-2; i++)
-            overlapBitmapSize = overlapBitmapSize * 3 + 1;
-        overlapBitmap = (bool*)malloc(overlapBitmapSize);
-        memset(overlapBitmap, 0, overlapBitmapSize);
-        std::cout << "Allocated " << overlapBitmapSize << " bytes for overlap caching" << std::endl;
+            overlapCacheSize = overlapCacheSize * 3 + 1;
+        overlapCache = (bool*)malloc(overlapCacheSize);
+        memset(overlapCache, 0, overlapCacheSize);
+        std::cout << "Allocated " << overlapCacheSize << " bytes for overlap caching" << std::endl;
     }
 
     size_t poolSize;
@@ -813,7 +813,7 @@ int main(int argc, char *argv[])
             }
             int polytetsCompressedSize = ((tetCount - 2) * 3 + 8-1) / 8;
             polytetCount = size / polytetsCompressedSize;
-            if (!readAndCloseOpenedFile(resumeFile, (uint8_t*)pool, size) || !readFile(filename = OVERLAP_BITMAP_FILENAME, (uint8_t*)overlapBitmap, minUnseenCompressedSubpolytet))
+            if (!readAndCloseOpenedFile(resumeFile, (uint8_t*)pool, size) || !readFile(filename = OVERLAP_BITMAP_FILENAME, (uint8_t*)overlapCache, minUnseenCompressedSubpolytet))
             {
                 std::cerr << "Error reading file \"" << filename << "\"" << std::endl;
                 goto errorQuit;
@@ -822,7 +822,7 @@ int main(int argc, char *argv[])
             // Reconstruct minOverlapDepth from loaded file
             CompressedSubpolytet minOverlapCompressedSubpolytet = 0;
             for (; minOverlapCompressedSubpolytet < minUnseenCompressedSubpolytet; minOverlapCompressedSubpolytet++)
-                if (overlapBitmap[minOverlapCompressedSubpolytet])
+                if (overlapCache[minOverlapCompressedSubpolytet])
                     break;
             minOverlapDepth = 1;
             while (minOverlapCompressedSubpolytet)
@@ -993,7 +993,7 @@ int main(int argc, char *argv[])
                             overlap.setB(*tetCheckIntersection);
                             if (overlap(maximalTouchingSqrDistance))
                             {
-                                overlapBitmap[compressedPath - 1] = true;
+                                overlapCache[compressedPath - 1] = true;
 
                                 CompressedSubpolytet compressedPathReflected = 0, trit = 1;
                                 while (compressedPath)
@@ -1006,7 +1006,7 @@ int main(int argc, char *argv[])
                                     compressedPath /= 3;
                                     trit *= 3;
                                 }
-                                overlapBitmap[compressedPathReflected - 1] = true;
+                                overlapCache[compressedPathReflected - 1] = true;
 
                                 foundOverlaps = true;
                                 goto skipDueToOverlap;
@@ -1014,7 +1014,7 @@ int main(int argc, char *argv[])
                         }
                         else
                         {
-                            if (overlapBitmap[compressedPath - 1])
+                            if (overlapCache[compressedPath - 1])
                             {
                                 foundOverlaps = true;
                                 goto skipDueToOverlap;
@@ -1071,13 +1071,13 @@ int main(int argc, char *argv[])
             minOverlapDepth++;
 #ifdef WRITE_TO_FILES
         else
-            writeFile(OVERLAP_BITMAP_FILENAME, (uint8_t*)overlapBitmap, minUnseenCompressedSubpolytet);
+            writeFile(OVERLAP_BITMAP_FILENAME, (uint8_t*)overlapCache, minUnseenCompressedSubpolytet);
 #endif
     }
 
 errorQuit:
     free(pool);
-    free(overlapBitmap);
+    free(overlapCache);
 #ifdef USE_GMP
     mpz_clear(maximalTouchingSqrDistance);
 #endif
