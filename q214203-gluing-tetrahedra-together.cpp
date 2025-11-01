@@ -760,9 +760,9 @@ int main(int argc, char *argv[])
     CompressedSubpolytet minUnseenCompressedSubpolytet = 0;
     bool *overlapBitmap; // An actual bitmap was tried, and was a bit slower; so, we'll use 8 times as much RAM to get slightly better speed
     {
-        size_t overlapBitmapSize = 1;
+        size_t overlapBitmapSize = 0;
         for (int i=0; i<MAXIMUM_TETCOUNT-2; i++)
-            overlapBitmapSize *= 3;
+            overlapBitmapSize = overlapBitmapSize * 3 + 1;
         overlapBitmap = (bool*)malloc(overlapBitmapSize);
         memset(overlapBitmap, 0, overlapBitmapSize);
         std::cout << "Allocated " << overlapBitmapSize << " bytes for overlap caching" << std::endl;
