@@ -642,6 +642,8 @@ void printPolytet(Polytet &polytet)
 }
 #endif
 
+#define OVERLAP_BITMAP_FILENAME "polytets_overlap.bin"
+
 #if defined(WRITE_TO_FILES) || defined(RESUME_FROM_FILE)
 const char *getCompressedPolytetFilename(int tetCount)
 {
@@ -685,6 +687,14 @@ bool readAndCloseOpenedFile(FILE *f, uint8_t *ptr, size_t size)
     }
     fclose(f);
     return true;
+}
+
+bool readFile(const char *filename, uint8_t *ptr, size_t size)
+{
+    FILE *f = fopen(filename, "rb");
+    if (!f)
+        return false;
+    return readAndCloseOpenedFile(f, ptr, size);
 }
 #endif
 
@@ -803,12 +813,23 @@ int main(int argc, char *argv[])
             }
             int polytetsCompressedSize = ((tetCount - 2) * 3 + 8-1) / 8;
             polytetCount = size / polytetsCompressedSize;
-            if (!readAndCloseOpenedFile(resumeFile, (uint8_t*)pool, size))
+            if (!readAndCloseOpenedFile(resumeFile, (uint8_t*)pool, size) || !readFile(filename = OVERLAP_BITMAP_FILENAME, (uint8_t*)overlapBitmap, minUnseenCompressedSubpolytet))
             {
                 std::cerr << "Error reading file \"" << filename << "\"" << std::endl;
                 goto errorQuit;
             }
             resumedFromFile = true;
+            // Reconstruct minOverlapDepth from loaded file
+            CompressedSubpolytet minOverlapCompressedSubpolytet = 0;
+            for (; minOverlapCompressedSubpolytet < minUnseenCompressedSubpolytet; minOverlapCompressedSubpolytet++)
+                if (overlapBitmap[minOverlapCompressedSubpolytet])
+                    break;
+            minOverlapDepth = 1;
+            while (minOverlapCompressedSubpolytet)
+            {
+                minOverlapCompressedSubpolytet /= 3;
+                minOverlapDepth++;
+            }
         }
     }
     if (!pool)
@@ -1048,6 +1069,10 @@ int main(int argc, char *argv[])
         mul_start_3(start, maximalTouchingSqrDistance, minUnseenCompressedSubpolytet);
         if (!foundOverlaps)
             minOverlapDepth++;
+#ifdef WRITE_TO_FILES
+        else
+            writeFile(OVERLAP_BITMAP_FILENAME, (uint8_t*)overlapBitmap, minUnseenCompressedSubpolytet);
+#endif
     }
 
 errorQuit:
