@@ -1,3 +1,5 @@
+// See https://codegolf.stackexchange.com/a/283991/17216 and https://oeis.org/A276272
+
 #include <stdio.h>
 #include <fcntl.h>
 #include <iostream>
