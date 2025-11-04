@@ -948,6 +948,20 @@ int main(int argc, char *argv[])
                         for (int reflect=0; reflect<2; reflect++)
                         for (int rotationStep=0; rotationStep<3; rotationStep++)
                         {
+                            // Calculate what the top 3 bits of the serialized value will be, in the same way as the top-level "append" call
+                            unsigned topValue = 0;
+                            for (int _faceNum=0; _faceNum<3; _faceNum++)
+                            {
+                                int rotatedFaceNum = faceRotateReflect[reflect][_faceNum][rotationStep];
+                                int faceNum = thisRotationTable->faceMap[rotatedFaceNum];
+                                if (t->faceAttached[faceNum])
+                                    topValue |= 1 << _faceNum;
+                            }
+                            // Boost speed by canonicalizing the lower 3 bits to be only "001", "011", or "111".
+                            // This overrides the "least binary representation" criterion.
+                            if ((topValue & 1) == 0 || topValue == 5)
+                                continue;
+
                             polytet.resetIndexing(i);
                             CompressedPolytet newRotatedPolytet;
                             newRotatedPolytet.append(polytet, *t, thisRotationTable, rotationStep, reflect);
