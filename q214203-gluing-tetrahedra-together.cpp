@@ -556,10 +556,11 @@ class CompressedPolytet
         }
     }
 public:
-    Polytet &polytet;
     CompressedPolytetBits value;
+    Polytet &polytet;
+    int reflect;
     CompressedPolytet(Polytet &_polytet) : polytet(_polytet), value(0) {}
-    void append(Tet &tetToCompress, const RotationTable *thisRotationTable, int faceRotation, int reflect)
+    void append(Tet &tetToCompress, const RotationTable *thisRotationTable, int faceRotation)
     // indices of vertexMap[] are compressed-output vertices; elements of vertexMap[] are the original vertices of tetToCompress
     {
         tetToCompress.assignIndex(polytet.nextIndex);
@@ -579,7 +580,7 @@ public:
 
             int attachedFace = tetToCompress.faceAttachedFace[faceNum];
             int rotation = thisRotationTable->rotation[rotatedFaceNum];
-            append(*attachedTet, &rotationTable[attachedFace], rotation, reflect);
+            append(*attachedTet, &rotationTable[attachedFace], rotation);
         }
     }
     void uncompress()
@@ -965,7 +966,8 @@ int main(int argc, char *argv[])
 
                             polytet.resetIndexing(i);
                             CompressedPolytet newRotatedPolytet(polytet);
-                            newRotatedPolytet.append(*t, thisRotationTable, rotationStep, reflect);
+                            newRotatedPolytet.reflect = reflect;
+                            newRotatedPolytet.append(*t, thisRotationTable, rotationStep);
 
                             // Update the running "least" rotation
                             if (!haveRunningLeast[reflect] || newRotatedPolytet.value < runningLeastPolytet[reflect])
