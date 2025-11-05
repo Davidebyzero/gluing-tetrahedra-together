@@ -416,8 +416,12 @@ public:
             std::swap(a, b);
             maxEdgeNum = countof(tetrahedronEdges); // disable the optimization for when "b" is the newly added tetrahedron
         }
+        return false;
         // The above will fail to detect an overlap in which 3 edges of one tetrahedron perfectly intersect with 3 edges of the other.
-        // To handle this case, check if the new vertex of tetrahedron "A" is inside tetrahedron "B".
+    }
+    bool pointInTetrahedron()
+    {
+        // Check if the new vertex of tetrahedron "A" is inside tetrahedron "B".
         for (int d=0; d<3; d++)
         {
             mpz_sub(edge1[d], b->t.t[1][d], b->t.t[0][d]);
@@ -546,8 +550,12 @@ public:
             std::swap(a, b);
             maxEdgeNum = countof(tetrahedronEdges); // disable the optimization for when "b" is the newly added tetrahedron
         }
+        return false;
         // The above will fail to detect an overlap in which 3 edges of one tetrahedron perfectly intersect with 3 edges of the other.
-        // To handle this case, check if the new vertex of tetrahedron "A" is inside tetrahedron "B".
+    }
+    bool pointInTetrahedron()
+    {
+        // Check if the new vertex of tetrahedron "A" is inside tetrahedron "B".
         Coord3 n0 = cross(b->t[1]-b->t[0], b->t[2]-b->t[0]);
         Coord3 n1 = cross(b->t[1]-b->t[0], b->t[3]-b->t[0]);
         Coord3 n2 = cross(b->t[2]-b->t[0], b->t[3]-b->t[0]);
@@ -1097,6 +1105,7 @@ int main(int argc, char *argv[])
                             overlap.setB(*tetCheckIntersection);
                             if (overlap(maximalTouchingSqrDistance))
                             {
+                            fallbackFoundOverlap:
                                 overlapCache[compressedPath - 1] = true;
 
                                 CompressedSubpolytet compressedPathReflected = 0, trit = 1;
@@ -1114,6 +1123,12 @@ int main(int argc, char *argv[])
 
                                 foundOverlaps = true;
                                 goto skipDueToOverlap;
+                            }
+                            if (overlap.pointInTetrahedron())
+                            {
+                                printf("0x%llX\n", runningLeastPolytet[0]);
+                                printPolytet(polytet);
+                                goto fallbackFoundOverlap;
                             }
                         }
                         else
