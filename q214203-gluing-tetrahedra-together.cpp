@@ -543,7 +543,7 @@ void attachNewTet(Tet &t, Tet &tetToAttachTo, const int faceNum)
 // because that one is attached implicitly).
 class CompressedPolytet
 {
-    void uncompressHelper(Polytet &polytet, TetIndex index, TetIndex &nextIndex)
+    void uncompressHelper(TetIndex index, TetIndex &nextIndex)
     {
         for (int faceNum=0; faceNum<3; faceNum++)
         {
@@ -551,14 +551,15 @@ class CompressedPolytet
             {
                 TetIndex thisIndex = nextIndex++;
                 attachNewTet(polytet[thisIndex], polytet[index], faceNum);
-                uncompressHelper(polytet, thisIndex, nextIndex);
+                uncompressHelper(thisIndex, nextIndex);
             }
         }
     }
 public:
+    Polytet &polytet;
     CompressedPolytetBits value;
-    CompressedPolytet() : value(0) {}
-    void append(Polytet &polytet, Tet &tetToCompress, const RotationTable *thisRotationTable, int faceRotation, int reflect)
+    CompressedPolytet(Polytet &_polytet) : polytet(_polytet), value(0) {}
+    void append(Tet &tetToCompress, const RotationTable *thisRotationTable, int faceRotation, int reflect)
     // indices of vertexMap[] are compressed-output vertices; elements of vertexMap[] are the original vertices of tetToCompress
     {
         tetToCompress.assignIndex(polytet.nextIndex);
@@ -578,28 +579,28 @@ public:
 
             int attachedFace = tetToCompress.faceAttachedFace[faceNum];
             int rotation = thisRotationTable->rotation[rotatedFaceNum];
-            append(polytet, *attachedTet, &rotationTable[attachedFace], rotation, reflect);
+            append(*attachedTet, &rotationTable[attachedFace], rotation, reflect);
         }
     }
-    void uncompress(Polytet &polytet)
+    void uncompress()
     {
         TetIndex index = 2;
-        uncompressHelper(polytet, 1, index);
+        uncompressHelper(1, index);
         if (index != polytet.size() - 1)
         {
             std::cerr << "Error! Got " << (unsigned)index << ", expected " << polytet.size() - 1 << std::endl;
             exit(-1);
         }
     }
-    size_t hash() const
-    {
-        std::size_t seed  = std::hash<uint64_t>{}(((uint64_t*)&value)[0]);
-#if MAXIMUM_TETCOUNT > 23
-        {         } seed ^= std::hash<uint64_t>{}(((uint64_t*)&value)[1]) + (seed << 6) + (seed >> 2);
-#endif
-        return seed;
-    }
 };
+size_t hash(CompressedPolytetBits value)
+{
+    std::size_t seed  = std::hash<uint64_t>{}(((uint64_t*)&value)[0]);
+#if MAXIMUM_TETCOUNT > 23
+    {         } seed ^= std::hash<uint64_t>{}(((uint64_t*)&value)[1]) + (seed << 6) + (seed >> 2);
+#endif
+    return seed;
+}
 
 void Tet::tagSkipOverlapCheckHelper(int depth, const RotationTable *thisRotationTable, int faceRotation/* = 0*/, CompressedSubpolytet curCompressedPath/* = 0*/, CompressedSubpolytet trit/* = 1*/)
 {
@@ -912,11 +913,11 @@ int main(int argc, char *argv[])
                 std::cout.flush();
             }
 #endif
-            CompressedPolytet *basePolytet = (CompressedPolytet*)(basePolytetTable + basePolytetI * basePolytetCompressedSize);
             {
-                CompressedPolytet tmp;
-                memcpy(&tmp.value, &basePolytet->value, basePolytetCompressedSize);
-                tmp.uncompress(polytet);
+                CompressedPolytetBits *basePolytet = (CompressedPolytetBits*)(basePolytetTable + basePolytetI * basePolytetCompressedSize);
+                CompressedPolytet tmp(polytet);
+                memcpy(&tmp.value, basePolytet, basePolytetCompressedSize);
+                tmp.uncompress();
             }
 
             Tet &newTet = polytet[tetCount - 1];
@@ -930,7 +931,7 @@ int main(int argc, char *argv[])
                     attachNewTet(newTet, tetToAttachTo, faceNum);
                     // Canonicalize the rotation of this new polytet in compressed form, so that it can be compared against others
                     bool haveRunningLeast[2] = {false, false};
-                    CompressedPolytet runningLeastPolytet[2];
+                    CompressedPolytetBits runningLeastPolytet[2];
 
                     Tet *t = &polytet[1];
                     for (int i=0; i<tetCount; i++)
@@ -963,24 +964,24 @@ int main(int argc, char *argv[])
                                 continue;
 
                             polytet.resetIndexing(i);
-                            CompressedPolytet newRotatedPolytet;
-                            newRotatedPolytet.append(polytet, *t, thisRotationTable, rotationStep, reflect);
+                            CompressedPolytet newRotatedPolytet(polytet);
+                            newRotatedPolytet.append(*t, thisRotationTable, rotationStep, reflect);
 
                             // Update the running "least" rotation
-                            if (!haveRunningLeast[reflect] || newRotatedPolytet.value < runningLeastPolytet[reflect].value)
+                            if (!haveRunningLeast[reflect] || newRotatedPolytet.value < runningLeastPolytet[reflect])
                             {
                                 haveRunningLeast[reflect] = true;
-                                runningLeastPolytet[reflect] = newRotatedPolytet;
+                                runningLeastPolytet[reflect] = newRotatedPolytet.value;
                             }
                         }
                     skipThisTet:;
                     }
 
-                    bool isChiral = runningLeastPolytet[1].value != runningLeastPolytet[0].value;
-                    if (isChiral && runningLeastPolytet[1].value <  runningLeastPolytet[0].value)
+                    bool isChiral = runningLeastPolytet[1] != runningLeastPolytet[0];
+                    if (isChiral && runningLeastPolytet[1] <  runningLeastPolytet[0])
                         runningLeastPolytet[0] = runningLeastPolytet[1];
 
-                    HashIndex *index = &hashTable[runningLeastPolytet[0].hash() % hashTableSize];
+                    HashIndex *index = &hashTable[hash(runningLeastPolytet[0]) % hashTableSize];
                     void *entry;
                     for (;;)
                     {
@@ -990,7 +991,7 @@ int main(int argc, char *argv[])
                             break; // no duplicate of runningLeastPolytet[0] was found in hash table
                         }
                         entry = (uint8_t*)polytetTable + (size_t)(*index - 1) * polytetTableElementSize;
-                        if (memcmp(entry, &runningLeastPolytet[0].value, newPolytetsCompressedSize) == 0)
+                        if (memcmp(entry, &runningLeastPolytet[0], newPolytetsCompressedSize) == 0)
                             goto skipDuplicate;
                         index = (HashIndex*)((uint8_t*)entry + newPolytetsCompressedSize);
                     }
@@ -1054,7 +1055,7 @@ int main(int argc, char *argv[])
                         (uint8_t*&)index            += diff;
                         (uint8_t*&)entry            += diff;
                     }
-                    memcpy(entry, &runningLeastPolytet[0].value, newPolytetsCompressedSize);
+                    memcpy(entry, &runningLeastPolytet[0], newPolytetsCompressedSize);
                     *index = ++newPolytetCount;
                     *(HashIndex*)((uint8_t*)entry + newPolytetsCompressedSize) = 0; // pointer to next hash collision
                 skipDuplicate:
