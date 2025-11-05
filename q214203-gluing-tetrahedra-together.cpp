@@ -901,6 +901,7 @@ int main(int argc, char *argv[])
         Tet &t0    = polytet.emplace_back(start);
         attachNewTet(polytet.emplace_back(), t0, 3);
 
+        CompressedPolytet newRotatedPolytet(polytet);
         polytet.resize(tetCount);
         polytetChiralCount = 0;
         for (size_t basePolytetI=0; basePolytetI<polytetCount; basePolytetI++)
@@ -916,9 +917,9 @@ int main(int argc, char *argv[])
 #endif
             {
                 CompressedPolytetBits *basePolytet = (CompressedPolytetBits*)(basePolytetTable + basePolytetI * basePolytetCompressedSize);
-                CompressedPolytet tmp(polytet);
-                memcpy(&tmp.value, basePolytet, basePolytetCompressedSize);
-                tmp.uncompress();
+                newRotatedPolytet.value = 0;
+                memcpy(&newRotatedPolytet.value, basePolytet, basePolytetCompressedSize);
+                newRotatedPolytet.uncompress();
             }
 
             Tet &newTet = polytet[tetCount - 1];
@@ -965,7 +966,7 @@ int main(int argc, char *argv[])
                                 continue;
 
                             polytet.resetIndexing(i);
-                            CompressedPolytet newRotatedPolytet(polytet);
+                            newRotatedPolytet.value = 0;
                             newRotatedPolytet.reflect = reflect;
                             newRotatedPolytet.append(*t, thisRotationTable, rotationStep);
 
