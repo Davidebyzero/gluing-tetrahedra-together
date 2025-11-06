@@ -9,13 +9,12 @@
 #include <chrono>
 
 #define USE_GMP
-#define MEMORY_POOL_INITIAL_SIZE (64uLL * 1024)  // in bytes; if the goal is to use more than half of available RAM, this must be preallocated at full expected size
-#define MEMORY_POOL_GROW_RATIO 1/16  // what proportion of the memory size to grow it by when more space is needed
+#define MEMORY_POOL_SIZE (36uLL * 1024*1024*1024)
 #define HASH_TABLE_RATIO 6
 #define SHOW_PROGRESS 16  // if defined, show progress starting at this term
 //#define PRINT_POLYTETS // requires USE_GMP
 
-#define MAXIMUM_TETCOUNT 17 // 28
+#define MAXIMUM_TETCOUNT 18 // 28
 
 #define WRITE_TO_FILES
 #define RESUME_FROM_FILE
@@ -41,12 +40,6 @@ void quitMemory()
 }
 
 typedef uint8_t TetIndex;
-
-#if MAXIMUM_TETCOUNT > 17
-typedef uint64_t HashIndex;
-#else
-typedef uint32_t HashIndex;
-#endif
 
 #if MAXIMUM_TETCOUNT > 23
 typedef unsigned __int128 CompressedPolytetBits; // Can handle up to 44 terms, while a 64-bit size_t can only handle up to about 28 terms
@@ -891,8 +884,8 @@ int main(int argc, char *argv[])
             fseeko64(resumeFile, 0, SEEK_END);
             size_t size = ftello64(resumeFile);
             poolSize = size;
-            if (poolSize < MEMORY_POOL_INITIAL_SIZE)
-                poolSize = MEMORY_POOL_INITIAL_SIZE;
+            if (poolSize < MEMORY_POOL_SIZE)
+                poolSize = MEMORY_POOL_SIZE;
             pool = malloc(poolSize);
             if (!pool)
             {
@@ -923,7 +916,7 @@ int main(int argc, char *argv[])
     if (!pool)
 #endif
     {
-        pool = malloc(poolSize = MEMORY_POOL_INITIAL_SIZE);
+        pool = malloc(poolSize = MEMORY_POOL_SIZE);
         if (!pool) quitMemory();
     }
 
@@ -951,29 +944,16 @@ int main(int argc, char *argv[])
         if (tetCount > MAXIMUM_TETCOUNT)
             break;
 
-        int basePolytetCompressedSize = ((tetCount - 3) * 3 + 8-1) / 8;
-        size_t hashTableSize = polytetCount * HASH_TABLE_RATIO;
-        uint8_t *basePolytetTable;
-        HashIndex *hashTable;
-        void *polytetTable;
-        for (;;)
-        {
-            basePolytetTable = (uint8_t*)pool;
-            size_t basePolytetTableSize = basePolytetCompressedSize * polytetCount;
-            hashTable = (HashIndex*)(basePolytetTable + basePolytetTableSize);
-            polytetTable = hashTable + hashTableSize;
-            size_t minSize = (uint8_t*)polytetTable - (uint8_t*)pool;
-            if (minSize < poolSize)
-                break;
-            void *newPool = realloc(pool, basePolytetTableSize); // so that if the below realloc() results in a move, only what memory actually needs to be moved will be moved
-            if (!newPool) {free(pool); quitMemory();}
-            void *newPool2 = realloc(newPool, poolSize = minSize + minSize * MEMORY_POOL_GROW_RATIO);
-            if (!newPool2) {free(newPool); quitMemory();}
-            pool = newPool2;
-        }
-        memset(hashTable, 0, hashTableSize * sizeof(HashIndex));
+        const int basePolytetCompressedSize = ((tetCount - 3) * 3 + 8-1) / 8;
         const int newPolytetsCompressedSize = ((tetCount - 2) * 3 + 8-1) / 8;
-        const int polytetTableElementSize = newPolytetsCompressedSize + sizeof(HashIndex);
+        size_t hashTableCount = polytetCount * HASH_TABLE_RATIO;
+        size_t hashTableSize = hashTableCount * newPolytetsCompressedSize;
+        uint8_t *basePolytetTable = (uint8_t*)pool;
+        uint8_t *hashTable = basePolytetTable + polytetCount * basePolytetCompressedSize;
+        uint8_t *hashTableEnd = hashTable + hashTableSize;
+        if (hashTableEnd - basePolytetTable > MEMORY_POOL_SIZE)
+            quitMemory();
+        memset(hashTable, 0, hashTableSize);
         size_t newPolytetCount = 0;
 #ifdef SHOW_PROGRESS
         size_t nextProgressOutput = tetCount < SHOW_PROGRESS ? UINT64_MAX : 0;
@@ -1068,19 +1048,18 @@ int main(int argc, char *argv[])
                     if (isChiral && runningLeastPolytet[1] <  runningLeastPolytet[0])
                         runningLeastPolytet[0] = runningLeastPolytet[1];
 
-                    HashIndex *index = &hashTable[hash(runningLeastPolytet[0]) % hashTableSize];
-                    void *entry;
+                    uint8_t *entry = hashTable + (hash(runningLeastPolytet[0]) % hashTableCount) * newPolytetsCompressedSize;
                     for (;;)
                     {
-                        if (*index == 0)
-                        {
-                            entry = (uint8_t*)polytetTable + newPolytetCount * polytetTableElementSize;
-                            break; // no duplicate of runningLeastPolytet[0] was found in hash table
-                        }
-                        entry = (uint8_t*)polytetTable + (size_t)(*index - 1) * polytetTableElementSize;
-                        if (memcmp(entry, &runningLeastPolytet[0], newPolytetsCompressedSize) == 0)
+                        CompressedPolytetBits value = 0;
+                        memcpy(&value, entry, newPolytetsCompressedSize);
+                        if (value == runningLeastPolytet[0])
                             goto skipDuplicate;
-                        index = (HashIndex*)((uint8_t*)entry + newPolytetsCompressedSize);
+                        if (value == 0)
+                            break;
+                        entry += newPolytetsCompressedSize;
+                        if (entry >= hashTableEnd)
+                            entry = hashTable;
                     }
                     // Check for overlap between this newly attached tetrahedron and the existing ones,
                     // and defer this until after the deduplication, to save a lot of time
@@ -1130,21 +1109,9 @@ int main(int argc, char *argv[])
                     printPolytet(polytet);
 #endif
                     polytetChiralCount += isChiral;
-                    if ((uint8_t*)entry + polytetTableElementSize - (uint8_t*)pool > poolSize)
-                    {
-                        void *newPool = realloc(pool, poolSize += poolSize * MEMORY_POOL_GROW_RATIO);
-                        if (!newPool) {free(pool); quitMemory();}
-                        ptrdiff_t diff = (uint8_t*)newPool - (uint8_t*)pool;
-                        pool = newPool;
-                        (uint8_t*&)basePolytetTable += diff;
-                        (uint8_t*&)hashTable        += diff;
-                        (uint8_t*&)polytetTable     += diff;
-                        (uint8_t*&)index            += diff;
-                        (uint8_t*&)entry            += diff;
-                    }
                     memcpy(entry, &runningLeastPolytet[0], newPolytetsCompressedSize);
-                    *index = ++newPolytetCount;
-                    *(HashIndex*)((uint8_t*)entry + newPolytetsCompressedSize) = 0; // pointer to next hash collision
+                    if (++newPolytetCount >= hashTableCount)
+                        quitMemory();
                 skipDuplicate:
                 skipDueToOverlap:
 
@@ -1157,13 +1124,21 @@ int main(int argc, char *argv[])
             polytet[1].faceAttached[2] = NULL;
         }
 
-        memoryUsage = (uint8_t*)polytetTable + newPolytetCount * polytetTableElementSize - (uint8_t*)pool;
+        memoryUsage = polytetCount * basePolytetCompressedSize + hashTableSize;
 
-        polytetCount = newPolytetCount;
-        for (size_t i=0; i<polytetCount; i++)
-            memcpy(
-                basePolytetTable       + i *                          newPolytetsCompressedSize,
-                (uint8_t*)polytetTable + i * polytetTableElementSize, newPolytetsCompressedSize);
+        polytetCount = 0;
+        for (uint8_t *p = hashTable; p < hashTableEnd; p += newPolytetsCompressedSize)
+        {
+            CompressedPolytetBits value = 0;
+            memcpy(&value, p, newPolytetsCompressedSize);
+            if (value != 0)
+                memcpy(basePolytetTable + (polytetCount++) * newPolytetsCompressedSize, &value, newPolytetsCompressedSize);
+        }
+        if (polytetCount != newPolytetCount)
+        {
+            std::cerr << "Error! Got " << (unsigned)polytetCount << " polytets from hash table, expected " << newPolytetCount << std::endl;
+            exit(-1);
+        }
 
 #ifdef WRITE_TO_FILES
         writeFile(getCompressedPolytetFilename(tetCount), basePolytetTable, polytetCount * newPolytetsCompressedSize);
