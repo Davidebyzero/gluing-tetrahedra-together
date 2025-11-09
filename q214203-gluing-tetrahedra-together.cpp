@@ -9,8 +9,8 @@
 #include <chrono>
 
 #define USE_GMP
-#define MEMORY_POOL_SIZE (36uLL * 1024*1024*1024)
-#define HASH_TABLE_RATIO 6
+#define MEMORY_POOL_SIZE (42100uLL * 1024*1024)
+#define HASH_TABLE_RATIO 7
 #define SHOW_PROGRESS 16  // if defined, show progress starting at this term
 //#define PRINT_POLYTETS // requires USE_GMP
 
