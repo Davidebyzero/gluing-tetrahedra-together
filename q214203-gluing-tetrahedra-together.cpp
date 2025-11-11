@@ -5,7 +5,6 @@
 #include <iostream>
 #include <string.h>
 #include <array>
-#include <vector>
 #include <chrono>
 
 #define USE_GMP
@@ -63,11 +62,12 @@ class Tetrahedron
 {
 public:
     mpz_t t[4][3];
-    Tetrahedron(const Tetrahedron &_t) : Tetrahedron()
+    Tetrahedron &operator=(const Tetrahedron &_t)
     {
         for (int p=0; p<4; p++)
             for (int d=0; d<3; d++)
                 mpz_set(t[p][d], _t.t[p][d]);
+        return *this;
     }
     Tetrahedron()
     {
@@ -90,13 +90,6 @@ typedef std::array<Coord3, 4> Tetrahedron;
 
 class Tet
 {
-    void initFaces()
-    {
-        faceAttached[0] = NULL; // t[0],t[1],t[2]
-        faceAttached[1] = NULL; // t[0],t[1],t[3]
-        faceAttached[2] = NULL; // t[0],t[2],t[3]
-        faceAttached[3] = NULL; // t[1],t[2],t[3]
-    }
     void tagSkipOverlapCheckHelper(int depth, const struct RotationTable *thisRotationTable, int faceRotation = 0, CompressedSubpolytet curCompressedPath = 0, CompressedSubpolytet trit = 1);
 public:
     Tetrahedron t;
@@ -104,8 +97,13 @@ public:
     uint8_t faceAttachedFace[4];
     TetIndex index; // 1-based; 0=unassigned
     CompressedSubpolytet compressedPath; // 0 = skip overlap check
-    Tet(                    ) : t( ) {initFaces();}
-    Tet(const Tetrahedron &t) : t(t) {initFaces();}
+    Tet() : t()
+    {
+        faceAttached[0] = NULL; // t[0],t[1],t[2]
+        faceAttached[1] = NULL; // t[0],t[1],t[3]
+        faceAttached[2] = NULL; // t[0],t[2],t[3]
+        faceAttached[3] = NULL; // t[1],t[2],t[3]
+    }
     void assignIndex(TetIndex &nextIndex)
     {
         if (index == 0)
@@ -113,18 +111,21 @@ public:
     }
     void tagSkipOverlapCheck(int depth);
 };
-class Polytet : public std::vector<Tet>
+class Polytet : public std::array<Tet, MAXIMUM_TETCOUNT>
 {
+    int tetCount;
 public:
     TetIndex nextIndex;
     void resetIndexing(size_t first) // This function should not be called if the polytet hasn't yet been populated
     {
         
-        for (auto t=begin(); t!=end(); ++t)
-            t->index = 0;
+        for (int i=0; i<tetCount; i++)
+            (*this)[i].index = 0;
         (*this)[first].index = 1;
         nextIndex = 2;
     }
+    void setSize(int x) {tetCount = x;}
+    int size() {return tetCount;}
 };
 
 // vertex indices of faces with identical chirality
@@ -718,15 +719,15 @@ void Tet::tagSkipOverlapCheck(int depth)
 void printPolytet(Polytet &polytet)
 {
     bool first = true;
-    for (auto thisTet=polytet.cbegin(); thisTet!=polytet.cend(); ++thisTet)
+    for (int i=0; i<polytet.size(); i++)
     {
         printf(first ? "{" : ",\n");
         first = false;
         gmp_printf("{{%Zd, %Zd, %Zd}, {%Zd, %Zd, %Zd}, {%Zd, %Zd, %Zd}, {%Zd, %Zd, %Zd}}",
-            thisTet->t.t[0][0], thisTet->t.t[0][1], thisTet->t.t[0][2],
-            thisTet->t.t[1][0], thisTet->t.t[1][1], thisTet->t.t[1][2],
-            thisTet->t.t[2][0], thisTet->t.t[2][1], thisTet->t.t[2][2],
-            thisTet->t.t[3][0], thisTet->t.t[3][1], thisTet->t.t[3][2]);
+            polytet[i].t.t[0][0], polytet[i].t.t[0][1], polytet[i].t.t[0][2],
+            polytet[i].t.t[1][0], polytet[i].t.t[1][1], polytet[i].t.t[1][2],
+            polytet[i].t.t[2][0], polytet[i].t.t[2][1], polytet[i].t.t[2][2],
+            polytet[i].t.t[3][0], polytet[i].t.t[3][1], polytet[i].t.t[3][2]);
     }
     printf("}\n\n");
 }
@@ -983,12 +984,11 @@ int main(int argc, char *argv[])
 #endif
 
         Polytet polytet;
-        polytet.reserve(tetCount); // Important, to ensure pointers don't change
-        Tet &t0    = polytet.emplace_back(start);
-        attachNewTet(polytet.emplace_back(), t0, 3);
+        polytet[0].t = start;
+        attachNewTet(polytet[1], polytet[0], 3);
+        polytet.setSize(tetCount);
 
         CompressedPolytet newRotatedPolytet(polytet);
-        polytet.resize(tetCount);
         polytetChiralCount = 0;
         for (size_t basePolytetI=0; basePolytetI<polytetCount; basePolytetI++)
         {
@@ -1100,14 +1100,14 @@ int main(int argc, char *argv[])
                     overlap.setA(newTet);
                     // Set up the "skipOverlapCheck" flags to skip overlap checking up to a depth of 5
                     newTet.tagSkipOverlapCheck(minOverlapDepth);
-                    for (auto tetCheckIntersection=polytet.cbegin(); tetCheckIntersection!=polytet.cend(); ++tetCheckIntersection)
+                    for (int tetCheckIntersectionI=0; tetCheckIntersectionI<polytet.size(); tetCheckIntersectionI++)
                     {
-                        if ((*tetCheckIntersection).compressedPath == UINT64_MAX)
+                        if (polytet[tetCheckIntersectionI].compressedPath == UINT64_MAX)
                             continue; // skip this check for speed (it'll always be false anyway)
-                        CompressedSubpolytet compressedPath = (tetCheckIntersection->compressedPath - 1) / 3;
+                        CompressedSubpolytet compressedPath = (polytet[tetCheckIntersectionI].compressedPath - 1) / 3;
                         if (compressedPath >= minUnseenCompressedSubpolytet)
                         {
-                            overlap.setB(*tetCheckIntersection);
+                            overlap.setB(polytet[tetCheckIntersectionI]);
                             if (overlap(maximalTouchingSqrDistance))
                             {
                                 overlapCache[compressedPath - 1] = true;
