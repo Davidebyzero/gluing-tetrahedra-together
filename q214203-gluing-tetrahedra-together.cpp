@@ -1,12 +1,13 @@
+// See https://codegolf.stackexchange.com/a/283991/17216 and https://oeis.org/A276272
+
 #include <stdio.h>
 #include <fcntl.h>
 #include <iostream>
 #include <string.h>
 #include <array>
-#include <vector>
 #include <chrono>
 
-//#define USE_GMP
+#define USE_GMP
 #define MEMORY_POOL_INITIAL_SIZE (64uLL * 1024)  // in bytes; if the goal is to use more than half of available RAM, this must be preallocated at full expected size
 #define MEMORY_POOL_GROW_RATIO 1/16  // what proportion of the memory size to grow it by when more space is needed
 #define HASH_TABLE_RATIO 6
@@ -48,8 +49,10 @@ typedef uint32_t HashIndex;
 
 #if MAXIMUM_TETCOUNT > 23
 typedef unsigned __int128 CompressedPolytetBits; // Can handle up to 44 terms, while a 64-bit size_t can only handle up to about 28 terms
+#define COMPRESSEDPOLYTETBITS_MAX (unsigned __int128)-1
 #else
 typedef uint64_t          CompressedPolytetBits; // Can handle up to 23 terms
+#define COMPRESSEDPOLYTETBITS_MAX UINT64_MAX
 #endif
 
 typedef uint64_t CompressedSubpolytet; // compressed in branchless format; for caching known-overlapping subpolytet paths
@@ -59,11 +62,12 @@ class Tetrahedron
 {
 public:
     mpz_t t[4][3];
-    Tetrahedron(const Tetrahedron &_t) : Tetrahedron()
+    Tetrahedron &operator=(const Tetrahedron &_t)
     {
         for (int p=0; p<4; p++)
             for (int d=0; d<3; d++)
                 mpz_set(t[p][d], _t.t[p][d]);
+        return *this;
     }
     Tetrahedron()
     {
@@ -86,13 +90,6 @@ typedef std::array<Coord3, 4> Tetrahedron;
 
 class Tet
 {
-    void initFaces()
-    {
-        faceAttached[0] = NULL; // t[0],t[1],t[2]
-        faceAttached[1] = NULL; // t[0],t[1],t[3]
-        faceAttached[2] = NULL; // t[0],t[2],t[3]
-        faceAttached[3] = NULL; // t[1],t[2],t[3]
-    }
     void tagSkipOverlapCheckHelper(int depth, const struct RotationTable *thisRotationTable, int faceRotation = 0, CompressedSubpolytet curCompressedPath = 0, CompressedSubpolytet trit = 1);
 public:
     Tetrahedron t;
@@ -100,8 +97,13 @@ public:
     uint8_t faceAttachedFace[4];
     TetIndex index; // 1-based; 0=unassigned
     CompressedSubpolytet compressedPath; // 0 = skip overlap check
-    Tet(                    ) : t( ) {initFaces();}
-    Tet(const Tetrahedron &t) : t(t) {initFaces();}
+    Tet() : t()
+    {
+        faceAttached[0] = NULL; // t[0],t[1],t[2]
+        faceAttached[1] = NULL; // t[0],t[1],t[3]
+        faceAttached[2] = NULL; // t[0],t[2],t[3]
+        faceAttached[3] = NULL; // t[1],t[2],t[3]
+    }
     void assignIndex(TetIndex &nextIndex)
     {
         if (index == 0)
@@ -109,18 +111,21 @@ public:
     }
     void tagSkipOverlapCheck(int depth);
 };
-class Polytet : public std::vector<Tet>
+class Polytet : public std::array<Tet, MAXIMUM_TETCOUNT>
 {
+    int tetCount;
 public:
     TetIndex nextIndex;
     void resetIndexing(size_t first) // This function should not be called if the polytet hasn't yet been populated
     {
         
-        for (auto t=begin(); t!=end(); ++t)
-            t->index = 0;
+        for (int i=0; i<tetCount; i++)
+            (*this)[i].index = 0;
         (*this)[first].index = 1;
         nextIndex = 2;
     }
+    void setSize(int x) {tetCount = x;}
+    int size() {return tetCount;}
 };
 
 // vertex indices of faces with identical chirality
@@ -208,6 +213,14 @@ Coord3 operator+(const Coord3 &a, const Coord3 &b)
     c[2] = a[2] + b[2];
     return c;
 }
+Coord3 operator-(const Coord3 &a)
+{
+    Coord3 c;
+    c[0] = -a[0];
+    c[1] = -a[1];
+    c[2] = -a[2];
+    return c;
+}
 Coord3 operator-(const Coord3 &a, const Coord3 &b)
 {
     Coord3 c;
@@ -228,6 +241,14 @@ Coord dot(const Coord3 &a, const Coord3 &b)
 {
     return a[0]*b[0] + a[1]*b[1] + a[2]*b[2];
 }
+Coord3 cross(const Coord3 a, const Coord3 b)
+{
+    Coord3 c;
+    c[0] = a[1]*b[2] - a[2]*b[1];
+    c[1] = a[2]*b[0] - a[0]*b[2];
+    c[2] = a[0]*b[1] - a[1]*b[0];
+    return c;
+}
 #endif
 
 // This class must be used in exactly the way it is in this program. That is, setA() and setB() must be called first, before operator(),
@@ -243,7 +264,7 @@ public:
 #ifdef USE_GMP
 private:
     mpz_t intersectNumerator, intersectDenominator, uNumerator, vNumerator, uvDenominator, uvNumeratorSum;
-    mpz_t center[3], normal[3], tmp[3], p0p1[3], intersectionPoint[3], delta[3], edge1[3], edge2[3];
+    mpz_t center[3], normal[3], tmp[3], p0p1[3], intersectionPoint[3], delta[3], edge1[3], edge2[3], edge3[3], edge4[3], edge5[3], n0[3], n1[3], n2[3], n3[3];
     mpz_t triangle[3][3];
     void dot(mpz_t &result, const mpz_t _a[3], const mpz_t _b[3])
     {
@@ -251,20 +272,17 @@ private:
         mpz_addmul(result, _a[1], _b[1]);
         mpz_addmul(result, _a[2], _b[2]);
     }
+    void cross(mpz_t result[3], const mpz_t _a[3], const mpz_t _b[3])
+    {
+        mpz_mul(result[0], _a[1], _b[2]); mpz_submul(result[0], _a[2], _b[1]);
+        mpz_mul(result[1], _a[2], _b[0]); mpz_submul(result[1], _a[0], _b[2]);
+        mpz_mul(result[2], _a[0], _b[1]); mpz_submul(result[2], _a[1], _b[0]);
+    }
     template <void (*MPZ_CALL)(mpz_t x), void (*MPZ_CALLS)(mpz_t x, ...)> void mpz_initOrClear()
     {
         MPZ_CALLS(intersectNumerator, intersectDenominator, uNumerator, vNumerator, uvDenominator, uvNumeratorSum, NULL);
         for (int d=0; d<3; d++)
-        {
-            MPZ_CALL(center[d]);
-            MPZ_CALL(normal[d]);
-            MPZ_CALL(tmp[d]);
-            MPZ_CALL(p0p1[d]);
-            MPZ_CALL(intersectionPoint[d]);
-            MPZ_CALL(delta[d]);
-            MPZ_CALL(edge1[d]);
-            MPZ_CALL(edge2[d]);
-        }
+            MPZ_CALLS(center[d], normal[d], tmp[d], p0p1[d], intersectionPoint[d], delta[d], edge1[d], edge2[d], edge3[d], edge4[d], edge5[d], n0[d], n1[d], n2[d], n3[d], NULL);
         for (int p=0; p<3; p++)
             for (int d=0; d<3; d++)
                 MPZ_CALL(triangle[p][d]);
@@ -385,7 +403,44 @@ public:
             std::swap(a, b);
             maxEdgeNum = countof(tetrahedronEdges); // disable the optimization for when "b" is the newly added tetrahedron
         }
-        return false;
+        // The above will fail to detect an overlap in which 3 edges of one tetrahedron perfectly intersect with 3 edges of the other.
+        // To handle this case, check if the new vertex of tetrahedron "A" is inside tetrahedron "B".
+        for (int d=0; d<3; d++)
+        {
+            mpz_sub(edge1[d], b->t.t[1][d], b->t.t[0][d]);
+            mpz_sub(edge2[d], b->t.t[2][d], b->t.t[0][d]);
+            mpz_sub(edge3[d], b->t.t[3][d], b->t.t[0][d]);
+            mpz_sub(edge4[d], b->t.t[2][d], b->t.t[1][d]);
+            mpz_sub(edge5[d], b->t.t[3][d], b->t.t[1][d]);
+        }
+        cross(n0, edge1, edge2);
+        cross(n1, edge1, edge3);
+        cross(n2, edge2, edge3);
+        cross(n3, edge4, edge5);
+        // Get center of tetrahedron "b" by averaging its vertices' coordinates, without dividing by 4.
+        for (int d=0; d<3; d++)
+            mpz_set(center[d], b->t.t[0][d]);
+        for (int p=1; p<4; p++)
+            for (int d=0; d<3; d++)
+                mpz_add(center[d], center[d], b->t.t[p][d]);
+        for (int d=0; d<3; d++)
+        {
+            mpz_mul_ui(edge1[d], b->t.t[0][d], 4); mpz_sub(edge1[d], center[d], edge1[d]);
+            mpz_mul_ui(edge2[d], b->t.t[1][d], 4); mpz_sub(edge2[d], center[d], edge2[d]);
+        }
+        dot(tmp[0], edge1, n0); if (mpz_cmp_ui(tmp[0], 0) > 0) for (int d=0; d<3; d++) mpz_neg(n0[d], n0[d]);
+        dot(tmp[0], edge1, n1); if (mpz_cmp_ui(tmp[0], 0) > 0) for (int d=0; d<3; d++) mpz_neg(n1[d], n1[d]);
+        dot(tmp[0], edge1, n2); if (mpz_cmp_ui(tmp[0], 0) > 0) for (int d=0; d<3; d++) mpz_neg(n2[d], n2[d]);
+        dot(tmp[0], edge2, n3); if (mpz_cmp_ui(tmp[0], 0) > 0) for (int d=0; d<3; d++) mpz_neg(n3[d], n3[d]);
+        for (int d=0; d<3; d++)
+        {
+            mpz_sub(edge1[d], a->t.t[0][d], b->t.t[0][d]);
+            mpz_sub(edge2[d], a->t.t[0][d], b->t.t[1][d]);
+        }
+        dot(tmp[0], edge1, n0); if    (mpz_cmp_ui(tmp[0], 0) >= 0) return false;
+        dot(tmp[0], edge1, n1); if    (mpz_cmp_ui(tmp[0], 0) >= 0) return false;
+        dot(tmp[0], edge1, n2); if    (mpz_cmp_ui(tmp[0], 0) >= 0) return false;
+        dot(tmp[0], edge2, n3); return mpz_cmp_ui(tmp[0], 0) <  0;
     }
 #else
 public:
@@ -479,6 +534,25 @@ public:
             //maxEdgeNum = countof(tetrahedronEdges); // disable the optimization for when "b" is the newly added tetrahedron
         }
         return false;
+        /*// The above will fail to detect an overlap in which 3 edges of one tetrahedron perfectly intersect with 3 edges of the other.
+        // To handle this case, check if the new vertex of tetrahedron "A" is inside tetrahedron "B".
+        Coord3 n0 = cross(b->t[1]-b->t[0], b->t[2]-b->t[0]);
+        Coord3 n1 = cross(b->t[1]-b->t[0], b->t[3]-b->t[0]);
+        Coord3 n2 = cross(b->t[2]-b->t[0], b->t[3]-b->t[0]);
+        Coord3 n3 = cross(b->t[2]-b->t[1], b->t[3]-b->t[1]);
+        // Get center of tetrahedron "b" by averaging its vertices' coordinates, without dividing by 4.
+        Coord3 center;
+        center[0] = b->t[0][0] + b->t[1][0] + b->t[2][0] + b->t[3][0];
+        center[1] = b->t[0][1] + b->t[1][1] + b->t[2][1] + b->t[3][1];
+        center[2] = b->t[0][2] + b->t[1][2] + b->t[2][2] + b->t[3][2];
+        if (dot(center - b->t[0]*4, n0) > 0) n0 = -n0;
+        if (dot(center - b->t[0]*4, n1) > 0) n1 = -n1;
+        if (dot(center - b->t[0]*4, n2) > 0) n2 = -n2;
+        if (dot(center - b->t[1]*4, n3) > 0) n3 = -n3;
+        return dot(a->t[0] - b->t[0], n0) < 0 &&
+               dot(a->t[0] - b->t[0], n1) < 0 &&
+               dot(a->t[0] - b->t[0], n2) < 0 &&
+               dot(a->t[0] - b->t[1], n3) < 0;*/
     }
 #endif
 };
@@ -541,7 +615,7 @@ void attachNewTet(Tet &t, Tet &tetToAttachTo, const int faceNum)
 // because that one is attached implicitly).
 class CompressedPolytet
 {
-    void uncompressHelper(Polytet &polytet, TetIndex index, TetIndex &nextIndex)
+    void uncompressHelper(TetIndex index, TetIndex &nextIndex)
     {
         for (int faceNum=0; faceNum<3; faceNum++)
         {
@@ -549,14 +623,16 @@ class CompressedPolytet
             {
                 TetIndex thisIndex = nextIndex++;
                 attachNewTet(polytet[thisIndex], polytet[index], faceNum);
-                uncompressHelper(polytet, thisIndex, nextIndex);
+                uncompressHelper(thisIndex, nextIndex);
             }
         }
     }
 public:
     CompressedPolytetBits value;
-    CompressedPolytet() : value(0) {}
-    void append(Polytet &polytet, Tet &tetToCompress, const RotationTable *thisRotationTable, int faceRotation, int reflect)
+    Polytet &polytet;
+    int reflect;
+    CompressedPolytet(Polytet &_polytet) : polytet(_polytet), value(0) {}
+    void append(Tet &tetToCompress, const RotationTable *thisRotationTable, int faceRotation)
     // indices of vertexMap[] are compressed-output vertices; elements of vertexMap[] are the original vertices of tetToCompress
     {
         tetToCompress.assignIndex(polytet.nextIndex);
@@ -576,28 +652,28 @@ public:
 
             int attachedFace = tetToCompress.faceAttachedFace[faceNum];
             int rotation = thisRotationTable->rotation[rotatedFaceNum];
-            append(polytet, *attachedTet, &rotationTable[attachedFace], rotation, reflect);
+            append(*attachedTet, &rotationTable[attachedFace], rotation);
         }
     }
-    void uncompress(Polytet &polytet)
+    void uncompress()
     {
         TetIndex index = 2;
-        uncompressHelper(polytet, 1, index);
+        uncompressHelper(1, index);
         if (index != polytet.size() - 1)
         {
             std::cerr << "Error! Got " << (unsigned)index << ", expected " << polytet.size() - 1 << std::endl;
             exit(-1);
         }
     }
-    size_t hash() const
-    {
-        std::size_t seed  = std::hash<uint64_t>{}(((uint64_t*)&value)[0]);
-#if MAXIMUM_TETCOUNT > 23
-        {         } seed ^= std::hash<uint64_t>{}(((uint64_t*)&value)[1]) + (seed << 6) + (seed >> 2);
-#endif
-        return seed;
-    }
 };
+size_t hash(CompressedPolytetBits value)
+{
+    std::size_t seed  = std::hash<uint64_t>{}(((uint64_t*)&value)[0]);
+#if MAXIMUM_TETCOUNT > 23
+    {         } seed ^= std::hash<uint64_t>{}(((uint64_t*)&value)[1]) + (seed << 6) + (seed >> 2);
+#endif
+    return seed;
+}
 
 void Tet::tagSkipOverlapCheckHelper(int depth, const RotationTable *thisRotationTable, int faceRotation/* = 0*/, CompressedSubpolytet curCompressedPath/* = 0*/, CompressedSubpolytet trit/* = 1*/)
 {
@@ -628,15 +704,15 @@ void Tet::tagSkipOverlapCheck(int depth)
 void printPolytet(Polytet &polytet)
 {
     bool first = true;
-    for (auto thisTet=polytet.cbegin(); thisTet!=polytet.cend(); ++thisTet)
+    for (int i=0; i<polytet.size(); i++)
     {
         printf(first ? "{" : ",\n");
         first = false;
         gmp_printf("{{%Zd, %Zd, %Zd}, {%Zd, %Zd, %Zd}, {%Zd, %Zd, %Zd}, {%Zd, %Zd, %Zd}}",
-            thisTet->t.t[0][0], thisTet->t.t[0][1], thisTet->t.t[0][2],
-            thisTet->t.t[1][0], thisTet->t.t[1][1], thisTet->t.t[1][2],
-            thisTet->t.t[2][0], thisTet->t.t[2][1], thisTet->t.t[2][2],
-            thisTet->t.t[3][0], thisTet->t.t[3][1], thisTet->t.t[3][2]);
+            polytet[i].t.t[0][0], polytet[i].t.t[0][1], polytet[i].t.t[0][2],
+            polytet[i].t.t[1][0], polytet[i].t.t[1][1], polytet[i].t.t[1][2],
+            polytet[i].t.t[2][0], polytet[i].t.t[2][1], polytet[i].t.t[2][2],
+            polytet[i].t.t[3][0], polytet[i].t.t[3][1], polytet[i].t.t[3][2]);
     }
     printf("}\n\n");
 }
@@ -758,14 +834,14 @@ int main(int argc, char *argv[])
 #endif
 
     CompressedSubpolytet minUnseenCompressedSubpolytet = 0;
-    bool *overlapBitmap; // An actual bitmap was tried, and was a bit slower; so, we'll use 8 times as much RAM to get slightly better speed
+    bool *overlapCache; // A bitmap (packed booleans) was tried, and was a bit slower; so, we'll use 8 times as much RAM to get slightly better speed
     {
-        size_t overlapBitmapSize = 1;
+        size_t overlapCacheSize = 0;
         for (int i=0; i<MAXIMUM_TETCOUNT-2; i++)
-            overlapBitmapSize *= 3;
-        overlapBitmap = (bool*)malloc(overlapBitmapSize);
-        memset(overlapBitmap, 0, overlapBitmapSize);
-        std::cout << "Allocated " << overlapBitmapSize << " bytes for overlap caching" << std::endl;
+            overlapCacheSize = overlapCacheSize * 3 + 1;
+        overlapCache = (bool*)malloc(overlapCacheSize);
+        memset(overlapCache, 0, overlapCacheSize);
+        std::cout << "Allocated " << overlapCacheSize << " bytes for overlap caching" << std::endl;
     }
 
     size_t poolSize;
@@ -813,7 +889,7 @@ int main(int argc, char *argv[])
             }
             int polytetsCompressedSize = ((tetCount - 2) * 3 + 8-1) / 8;
             polytetCount = size / polytetsCompressedSize;
-            if (!readAndCloseOpenedFile(resumeFile, (uint8_t*)pool, size) || !readFile(filename = OVERLAP_BITMAP_FILENAME, (uint8_t*)overlapBitmap, minUnseenCompressedSubpolytet))
+            if (!readAndCloseOpenedFile(resumeFile, (uint8_t*)pool, size) || !readFile(filename = OVERLAP_BITMAP_FILENAME, (uint8_t*)overlapCache, minUnseenCompressedSubpolytet))
             {
                 std::cerr << "Error reading file \"" << filename << "\"" << std::endl;
                 goto errorQuit;
@@ -822,7 +898,7 @@ int main(int argc, char *argv[])
             // Reconstruct minOverlapDepth from loaded file
             CompressedSubpolytet minOverlapCompressedSubpolytet = 0;
             for (; minOverlapCompressedSubpolytet < minUnseenCompressedSubpolytet; minOverlapCompressedSubpolytet++)
-                if (overlapBitmap[minOverlapCompressedSubpolytet])
+                if (overlapCache[minOverlapCompressedSubpolytet])
                     break;
             minOverlapDepth = 1;
             while (minOverlapCompressedSubpolytet)
@@ -893,11 +969,11 @@ int main(int argc, char *argv[])
 #endif
 
         Polytet polytet;
-        polytet.reserve(tetCount); // Important, to ensure pointers don't change
-        Tet &t0    = polytet.emplace_back(start);
-        attachNewTet(polytet.emplace_back(), t0, 3);
+        polytet[0].t = start;
+        attachNewTet(polytet[1], polytet[0], 3);
+        polytet.setSize(tetCount);
 
-        polytet.resize(tetCount);
+        CompressedPolytet newRotatedPolytet(polytet);
         polytetChiralCount = 0;
         for (size_t basePolytetI=0; basePolytetI<polytetCount; basePolytetI++)
         {
@@ -910,11 +986,11 @@ int main(int argc, char *argv[])
                 std::cout.flush();
             }
 #endif
-            CompressedPolytet *basePolytet = (CompressedPolytet*)(basePolytetTable + basePolytetI * basePolytetCompressedSize);
             {
-                CompressedPolytet tmp;
-                memcpy(&tmp.value, &basePolytet->value, basePolytetCompressedSize);
-                tmp.uncompress(polytet);
+                CompressedPolytetBits *basePolytet = (CompressedPolytetBits*)(basePolytetTable + basePolytetI * basePolytetCompressedSize);
+                newRotatedPolytet.value = 0;
+                memcpy(&newRotatedPolytet.value, basePolytet, basePolytetCompressedSize);
+                newRotatedPolytet.uncompress();
             }
 
             Tet &newTet = polytet[tetCount - 1];
@@ -927,12 +1003,24 @@ int main(int argc, char *argv[])
                         continue;
                     attachNewTet(newTet, tetToAttachTo, faceNum);
                     // Canonicalize the rotation of this new polytet in compressed form, so that it can be compared against others
-                    bool haveRunningLeast[2] = {false, false};
-                    CompressedPolytet runningLeastPolytet[2];
+                    CompressedPolytetBits runningLeastPolytet[2] = {COMPRESSEDPOLYTETBITS_MAX, COMPRESSEDPOLYTETBITS_MAX};
 
                     Tet *t = &polytet[1];
                     for (int i=0; i<tetCount; i++)
                     {
+                        static const uint8_t bitRotationTable[1 << 3][2 * 2] =
+                        {
+                            {0, 2,   0, 2}, // 000
+                            {0, 0,   2, 2}, // 001 -> 001
+                            {1, 1,   0, 0}, // 010 -> 001
+                            {0, 0,   0, 0}, // 011 -> 011
+                            {2, 2,   1, 1}, // 100 -> 001
+                            {2, 2,   2, 2}, // 101 -> 011
+                            {1, 1,   1, 1}, // 110 -> 011
+                            {0, 2,   0, 2}, // 111
+                        };
+                        const uint8_t *rotationStepRange;
+
                         const RotationTable *thisRotationTable;
                         {
                             Tet &singlyAttachedTet = polytet[i];
@@ -943,28 +1031,42 @@ int main(int argc, char *argv[])
                             int attachedFace = singlyAttachedTet.faceAttachedFace[3];
                             thisRotationTable = &rotationTable[attachedFace];
                         }
-                        for (int reflect=0; reflect<2; reflect++)
-                        for (int rotationStep=0; rotationStep<3; rotationStep++)
                         {
-                            polytet.resetIndexing(i);
-                            CompressedPolytet newRotatedPolytet;
-                            newRotatedPolytet.append(polytet, *t, thisRotationTable, rotationStep, reflect);
-
-                            // Update the running "least" rotation
-                            if (!haveRunningLeast[reflect] || newRotatedPolytet.value < runningLeastPolytet[reflect].value)
+                            // Calculate what the top 3 bits of the serialized value will be, in the same way as the top-level "append" call
+                            unsigned topValue = 0;
+                            for (int _faceNum=0; _faceNum<3; _faceNum++)
                             {
-                                haveRunningLeast[reflect] = true;
-                                runningLeastPolytet[reflect] = newRotatedPolytet;
+                                int rotatedFaceNum = faceRotateReflect[0][_faceNum][0];
+                                int faceNum = thisRotationTable->faceMap[rotatedFaceNum];
+                                if (t->faceAttached[faceNum])
+                                    topValue |= 1 << _faceNum;
+                            }
+                            // Boost speed by canonicalizing the lower 3 bits to be only "001", "011", or "111".
+                            // This overrides the "least binary representation" criterion.
+                            rotationStepRange = bitRotationTable[topValue];
+                        }
+                        for (int reflect=0; reflect<2; reflect++, rotationStepRange+=2)
+                        {
+                            for (uint8_t rotationStep=rotationStepRange[0]; rotationStep<=rotationStepRange[1]; rotationStep++)
+                            {
+                                polytet.resetIndexing(i);
+                                newRotatedPolytet.value = 0;
+                                newRotatedPolytet.reflect = reflect;
+                                newRotatedPolytet.append(*t, thisRotationTable, rotationStep);
+
+                                // Update the running "least" rotation
+                                if (newRotatedPolytet.value < runningLeastPolytet[reflect])
+                                    runningLeastPolytet[reflect] = newRotatedPolytet.value;
                             }
                         }
                     skipThisTet:;
                     }
 
-                    bool isChiral = runningLeastPolytet[1].value != runningLeastPolytet[0].value;
-                    if (isChiral && runningLeastPolytet[1].value <  runningLeastPolytet[0].value)
+                    bool isChiral = runningLeastPolytet[1] != runningLeastPolytet[0];
+                    if (isChiral && runningLeastPolytet[1] <  runningLeastPolytet[0])
                         runningLeastPolytet[0] = runningLeastPolytet[1];
 
-                    HashIndex *index = &hashTable[runningLeastPolytet[0].hash() % hashTableSize];
+                    HashIndex *index = &hashTable[hash(runningLeastPolytet[0]) % hashTableSize];
                     void *entry;
                     for (;;)
                     {
@@ -974,7 +1076,7 @@ int main(int argc, char *argv[])
                             break; // no duplicate of runningLeastPolytet[0] was found in hash table
                         }
                         entry = (uint8_t*)polytetTable + (size_t)(*index - 1) * polytetTableElementSize;
-                        if (memcmp(entry, &runningLeastPolytet[0].value, newPolytetsCompressedSize) == 0)
+                        if (memcmp(entry, &runningLeastPolytet[0], newPolytetsCompressedSize) == 0)
                             goto skipDuplicate;
                         index = (HashIndex*)((uint8_t*)entry + newPolytetsCompressedSize);
                     }
@@ -983,17 +1085,17 @@ int main(int argc, char *argv[])
                     overlap.setA(newTet);
                     // Set up the "skipOverlapCheck" flags to skip overlap checking up to a depth of 5
                     newTet.tagSkipOverlapCheck(minOverlapDepth);
-                    for (auto tetCheckIntersection=polytet.cbegin(); tetCheckIntersection!=polytet.cend(); ++tetCheckIntersection)
+                    for (int tetCheckIntersectionI=0; tetCheckIntersectionI<polytet.size(); tetCheckIntersectionI++)
                     {
-                        if ((*tetCheckIntersection).compressedPath == UINT64_MAX)
+                        if (polytet[tetCheckIntersectionI].compressedPath == UINT64_MAX)
                             continue; // skip this check for speed (it'll always be false anyway)
-                        CompressedSubpolytet compressedPath = (tetCheckIntersection->compressedPath - 1) / 3;
+                        CompressedSubpolytet compressedPath = (polytet[tetCheckIntersectionI].compressedPath - 1) / 3;
                         if (compressedPath >= minUnseenCompressedSubpolytet)
                         {
-                            overlap.setB(*tetCheckIntersection);
+                            overlap.setB(polytet[tetCheckIntersectionI]);
                             if (overlap(maximalTouchingSqrDistance))
                             {
-                                overlapBitmap[compressedPath - 1] = true;
+                                overlapCache[compressedPath - 1] = true;
 
                                 CompressedSubpolytet compressedPathReflected = 0, trit = 1;
                                 while (compressedPath)
@@ -1006,7 +1108,7 @@ int main(int argc, char *argv[])
                                     compressedPath /= 3;
                                     trit *= 3;
                                 }
-                                overlapBitmap[compressedPathReflected - 1] = true;
+                                overlapCache[compressedPathReflected - 1] = true;
 
                                 foundOverlaps = true;
                                 goto skipDueToOverlap;
@@ -1014,7 +1116,7 @@ int main(int argc, char *argv[])
                         }
                         else
                         {
-                            if (overlapBitmap[compressedPath - 1])
+                            if (overlapCache[compressedPath - 1])
                             {
                                 foundOverlaps = true;
                                 goto skipDueToOverlap;
@@ -1038,7 +1140,7 @@ int main(int argc, char *argv[])
                         (uint8_t*&)index            += diff;
                         (uint8_t*&)entry            += diff;
                     }
-                    memcpy(entry, &runningLeastPolytet[0].value, newPolytetsCompressedSize);
+                    memcpy(entry, &runningLeastPolytet[0], newPolytetsCompressedSize);
                     *index = ++newPolytetCount;
                     *(HashIndex*)((uint8_t*)entry + newPolytetsCompressedSize) = 0; // pointer to next hash collision
                 skipDuplicate:
@@ -1071,13 +1173,13 @@ int main(int argc, char *argv[])
             minOverlapDepth++;
 #ifdef WRITE_TO_FILES
         else
-            writeFile(OVERLAP_BITMAP_FILENAME, (uint8_t*)overlapBitmap, minUnseenCompressedSubpolytet);
+            writeFile(OVERLAP_BITMAP_FILENAME, (uint8_t*)overlapCache, minUnseenCompressedSubpolytet);
 #endif
     }
 
 errorQuit:
     free(pool);
-    free(overlapBitmap);
+    free(overlapCache);
 #ifdef USE_GMP
     mpz_clear(maximalTouchingSqrDistance);
 #endif
