@@ -50,8 +50,10 @@ typedef uint32_t HashIndex;
 
 #if MAXIMUM_TETCOUNT > 23
 typedef unsigned __int128 CompressedPolytetBits; // Can handle up to 44 terms, while a 64-bit size_t can only handle up to about 28 terms
+#define COMPRESSEDPOLYTETBITS_MAX (unsigned __int128)-1
 #else
 typedef uint64_t          CompressedPolytetBits; // Can handle up to 23 terms
+#define COMPRESSEDPOLYTETBITS_MAX UINT64_MAX
 #endif
 
 typedef uint64_t CompressedSubpolytet; // compressed in branchless format; for caching known-overlapping subpolytet paths
@@ -1016,8 +1018,7 @@ int main(int argc, char *argv[])
                         continue;
                     attachNewTet(newTet, tetToAttachTo, faceNum);
                     // Canonicalize the rotation of this new polytet in compressed form, so that it can be compared against others
-                    bool haveRunningLeast[2] = {false, false};
-                    CompressedPolytetBits runningLeastPolytet[2];
+                    CompressedPolytetBits runningLeastPolytet[2] = {COMPRESSEDPOLYTETBITS_MAX, COMPRESSEDPOLYTETBITS_MAX};
 
                     Tet *t = &polytet[1];
                     for (int i=0; i<tetCount; i++)
@@ -1069,11 +1070,8 @@ int main(int argc, char *argv[])
                                 newRotatedPolytet.append(*t, thisRotationTable, rotationStep);
 
                                 // Update the running "least" rotation
-                                if (!haveRunningLeast[reflect] || newRotatedPolytet.value < runningLeastPolytet[reflect])
-                                {
-                                    haveRunningLeast[reflect] = true;
+                                if (newRotatedPolytet.value < runningLeastPolytet[reflect])
                                     runningLeastPolytet[reflect] = newRotatedPolytet.value;
-                                }
                             }
                         }
                     skipThisTet:;
