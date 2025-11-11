@@ -282,23 +282,7 @@ private:
     {
         MPZ_CALLS(intersectNumerator, intersectDenominator, uNumerator, vNumerator, uvDenominator, uvNumeratorSum, NULL);
         for (int d=0; d<3; d++)
-        {
-            MPZ_CALL(center[d]);
-            MPZ_CALL(normal[d]);
-            MPZ_CALL(tmp[d]);
-            MPZ_CALL(p0p1[d]);
-            MPZ_CALL(intersectionPoint[d]);
-            MPZ_CALL(delta[d]);
-            MPZ_CALL(edge1[d]);
-            MPZ_CALL(edge2[d]);
-            MPZ_CALL(edge3[d]);
-            MPZ_CALL(edge4[d]);
-            MPZ_CALL(edge5[d]);
-            MPZ_CALL(n0[d]);
-            MPZ_CALL(n1[d]);
-            MPZ_CALL(n2[d]);
-            MPZ_CALL(n3[d]);
-        }
+            MPZ_CALLS(center[d], normal[d], tmp[d], p0p1[d], intersectionPoint[d], delta[d], edge1[d], edge2[d], edge3[d], edge4[d], edge5[d], n0[d], n1[d], n2[d], n3[d], NULL);
         for (int p=0; p<3; p++)
             for (int d=0; d<3; d++)
                 MPZ_CALL(triangle[p][d]);
