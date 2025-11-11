@@ -1022,6 +1022,19 @@ int main(int argc, char *argv[])
                     Tet *t = &polytet[1];
                     for (int i=0; i<tetCount; i++)
                     {
+                        static const uint8_t bitRotationTable[1 << 3][2 * 2] =
+                        {
+                            {0, 2,   0, 2}, // 000
+                            {0, 0,   2, 2}, // 001 -> 001
+                            {1, 1,   0, 0}, // 010 -> 001
+                            {0, 0,   0, 0}, // 011 -> 011
+                            {2, 2,   1, 1}, // 100 -> 001
+                            {2, 2,   2, 2}, // 101 -> 011
+                            {1, 1,   1, 1}, // 110 -> 011
+                            {0, 2,   0, 2}, // 111
+                        };
+                        const uint8_t *rotationStepRange;
+
                         const RotationTable *thisRotationTable;
                         {
                             Tet &singlyAttachedTet = polytet[i];
@@ -1032,33 +1045,35 @@ int main(int argc, char *argv[])
                             int attachedFace = singlyAttachedTet.faceAttachedFace[3];
                             thisRotationTable = &rotationTable[attachedFace];
                         }
-                        for (int reflect=0; reflect<2; reflect++)
-                        for (int rotationStep=0; rotationStep<3; rotationStep++)
                         {
                             // Calculate what the top 3 bits of the serialized value will be, in the same way as the top-level "append" call
                             unsigned topValue = 0;
                             for (int _faceNum=0; _faceNum<3; _faceNum++)
                             {
-                                int rotatedFaceNum = faceRotateReflect[reflect][_faceNum][rotationStep];
+                                int rotatedFaceNum = faceRotateReflect[0][_faceNum][0];
                                 int faceNum = thisRotationTable->faceMap[rotatedFaceNum];
                                 if (t->faceAttached[faceNum])
                                     topValue |= 1 << _faceNum;
                             }
                             // Boost speed by canonicalizing the lower 3 bits to be only "001", "011", or "111".
                             // This overrides the "least binary representation" criterion.
-                            if ((topValue & 1) == 0 || topValue == 5)
-                                continue;
-
-                            polytet.resetIndexing(i);
-                            newRotatedPolytet.value = 0;
-                            newRotatedPolytet.reflect = reflect;
-                            newRotatedPolytet.append(*t, thisRotationTable, rotationStep);
-
-                            // Update the running "least" rotation
-                            if (!haveRunningLeast[reflect] || newRotatedPolytet.value < runningLeastPolytet[reflect])
+                            rotationStepRange = bitRotationTable[topValue];
+                        }
+                        for (int reflect=0; reflect<2; reflect++, rotationStepRange+=2)
+                        {
+                            for (uint8_t rotationStep=rotationStepRange[0]; rotationStep<=rotationStepRange[1]; rotationStep++)
                             {
-                                haveRunningLeast[reflect] = true;
-                                runningLeastPolytet[reflect] = newRotatedPolytet.value;
+                                polytet.resetIndexing(i);
+                                newRotatedPolytet.value = 0;
+                                newRotatedPolytet.reflect = reflect;
+                                newRotatedPolytet.append(*t, thisRotationTable, rotationStep);
+
+                                // Update the running "least" rotation
+                                if (!haveRunningLeast[reflect] || newRotatedPolytet.value < runningLeastPolytet[reflect])
+                                {
+                                    haveRunningLeast[reflect] = true;
+                                    runningLeastPolytet[reflect] = newRotatedPolytet.value;
+                                }
                             }
                         }
                     skipThisTet:;
