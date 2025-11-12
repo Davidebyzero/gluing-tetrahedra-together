@@ -28,7 +28,9 @@
 #   endif
 #endif
 
-template <typename T, size_t N> size_t countof( T ( & arr )[ N ] ) {return std::extent< T[ N ] >::value;}
+#ifndef _countof
+    #define _countof(a) (sizeof(a)/sizeof(*(a)))
+#endif
 
 auto startTime = std::chrono::steady_clock::now();
 
@@ -394,7 +396,7 @@ public:
                 }
             }
             std::swap(a, b);
-            maxEdgeNum = countof(tetrahedronEdges); // disable the optimization for when "b" is the newly added tetrahedron
+            maxEdgeNum = _countof(tetrahedronEdges); // disable the optimization for when "b" is the newly added tetrahedron
         }
         // The above will fail to detect an overlap in which 3 edges of one tetrahedron perfectly intersect with 3 edges of the other.
         // But we can detect that case by checking the edgeEdgeIntersectionCount[] values.
@@ -504,7 +506,7 @@ public:
                 }
             }
             std::swap(a, b);
-            maxEdgeNum = countof(tetrahedronEdges); // disable the optimization for when "b" is the newly added tetrahedron
+            maxEdgeNum = _countof(tetrahedronEdges); // disable the optimization for when "b" is the newly added tetrahedron
         }
         // The above will fail to detect an overlap in which 3 edges of one tetrahedron perfectly intersect with 3 edges of the other.
         // But we can detect that case by checking the edgeEdgeIntersectionCount[] values.
