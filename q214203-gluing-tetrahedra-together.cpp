@@ -213,14 +213,6 @@ Coord3 operator+(const Coord3 &a, const Coord3 &b)
     c[2] = a[2] + b[2];
     return c;
 }
-Coord3 operator-(const Coord3 &a)
-{
-    Coord3 c;
-    c[0] = -a[0];
-    c[1] = -a[1];
-    c[2] = -a[2];
-    return c;
-}
 Coord3 operator-(const Coord3 &a, const Coord3 &b)
 {
     Coord3 c;
@@ -241,14 +233,6 @@ Coord dot(const Coord3 &a, const Coord3 &b)
 {
     return a[0]*b[0] + a[1]*b[1] + a[2]*b[2];
 }
-Coord3 cross(const Coord3 a, const Coord3 b)
-{
-    Coord3 c;
-    c[0] = a[1]*b[2] - a[2]*b[1];
-    c[1] = a[2]*b[0] - a[0]*b[2];
-    c[2] = a[0]*b[1] - a[1]*b[0];
-    return c;
-}
 #endif
 
 // This class must be used in exactly the way it is in this program. That is, setA() and setB() must be called first, before operator(),
@@ -264,7 +248,7 @@ public:
 #ifdef USE_GMP
 private:
     mpz_t intersectNumerator, intersectDenominator, uNumerator, vNumerator, uvDenominator, uvNumeratorSum;
-    mpz_t center[3], normal[3], tmp[3], p0p1[3], intersectionPoint[3], delta[3], edge1[3], edge2[3], edge3[3], edge4[3], edge5[3], n0[3], n1[3], n2[3], n3[3];
+    mpz_t center[3], normal[3], tmp[3], p0p1[3], intersectionPoint[3], delta[3], edge1[3], edge2[3];
     mpz_t triangle[3][3];
     void dot(mpz_t &result, const mpz_t _a[3], const mpz_t _b[3])
     {
@@ -272,17 +256,11 @@ private:
         mpz_addmul(result, _a[1], _b[1]);
         mpz_addmul(result, _a[2], _b[2]);
     }
-    void cross(mpz_t result[3], const mpz_t _a[3], const mpz_t _b[3])
-    {
-        mpz_mul(result[0], _a[1], _b[2]); mpz_submul(result[0], _a[2], _b[1]);
-        mpz_mul(result[1], _a[2], _b[0]); mpz_submul(result[1], _a[0], _b[2]);
-        mpz_mul(result[2], _a[0], _b[1]); mpz_submul(result[2], _a[1], _b[0]);
-    }
     template <void (*MPZ_CALL)(mpz_t x), void (*MPZ_CALLS)(mpz_t x, ...)> void mpz_initOrClear()
     {
         MPZ_CALLS(intersectNumerator, intersectDenominator, uNumerator, vNumerator, uvDenominator, uvNumeratorSum, NULL);
         for (int d=0; d<3; d++)
-            MPZ_CALLS(center[d], normal[d], tmp[d], p0p1[d], intersectionPoint[d], delta[d], edge1[d], edge2[d], edge3[d], edge4[d], edge5[d], n0[d], n1[d], n2[d], n3[d], NULL);
+            MPZ_CALLS(center[d], normal[d], tmp[d], p0p1[d], intersectionPoint[d], delta[d], edge1[d], edge2[d], NULL);
         for (int p=0; p<3; p++)
             for (int d=0; d<3; d++)
                 MPZ_CALL(triangle[p][d]);
@@ -308,6 +286,7 @@ public:
         if (mpz_cmp(tmp[0], maximalTouchingSqrDistance) >= 0)
             return false;
 
+        int8_t edgeEdgeIntersectionCount[4] = {}; // number of edges found to intersect with each face
         // In some circumstances, two tetrahedrons can intersect such that only the edges of one tetrahedron intersect with the
         // faces of the other, and not the other way around. So we need to check both.
         int maxEdgeNum = tetrahedronEdges_face3; // when "a" is the newly added tetrahedron, we can enable an optimization
@@ -378,6 +357,7 @@ public:
                         mpz_sub(edge1[d], triangle[1][d]      , triangle[0][d]);
                         mpz_sub(edge2[d], triangle[2][d]      , triangle[0][d]);
                     }
+                    // Calculate barycentric coordinates {u,v} of the intersection point
                     mpz_mul   (uNumerator, delta[1], edge2[0]);
                     mpz_submul(uNumerator, delta[0], edge2[1]);
                     mpz_mul   (vNumerator, delta[0], edge1[1]);
@@ -393,10 +373,23 @@ public:
                         mpz_neg(vNumerator, vNumerator);
                         mpz_neg(uvDenominator, uvDenominator);
                     }
-                    if (mpz_cmp_ui(uNumerator, 0) <= 0 || mpz_cmp_ui(vNumerator, 0) <= 0)
-                        continue;
+                    {
+                        int uCmp = mpz_cmp_ui(uNumerator, 0);
+                        int vCmp = mpz_cmp_ui(vNumerator, 0);
+                        if (uCmp == 0 || vCmp == 0)
+                        {
+                            edgeEdgeIntersectionCount[faceNum] += 1 - swapped;
+                            continue;
+                        }
+                        if (uCmp <= 0 || vCmp <= 0)
+                            continue;
+                    }
                     mpz_add(uvNumeratorSum, uNumerator, vNumerator);
-                    if (mpz_cmp(uvNumeratorSum, uvDenominator) < 0)
+                    int uvCmp = mpz_cmp(uvNumeratorSum, uvDenominator);
+                    if (uvCmp == 0)
+                        edgeEdgeIntersectionCount[faceNum] += 1 - swapped;
+                    else
+                    if (uvCmp < 0)
                         return true;
                 }
             }
@@ -404,43 +397,10 @@ public:
             maxEdgeNum = countof(tetrahedronEdges); // disable the optimization for when "b" is the newly added tetrahedron
         }
         // The above will fail to detect an overlap in which 3 edges of one tetrahedron perfectly intersect with 3 edges of the other.
-        // To handle this case, check if the new vertex of tetrahedron "A" is inside tetrahedron "B".
-        for (int d=0; d<3; d++)
-        {
-            mpz_sub(edge1[d], b->t.t[1][d], b->t.t[0][d]);
-            mpz_sub(edge2[d], b->t.t[2][d], b->t.t[0][d]);
-            mpz_sub(edge3[d], b->t.t[3][d], b->t.t[0][d]);
-            mpz_sub(edge4[d], b->t.t[2][d], b->t.t[1][d]);
-            mpz_sub(edge5[d], b->t.t[3][d], b->t.t[1][d]);
-        }
-        cross(n0, edge1, edge2);
-        cross(n1, edge1, edge3);
-        cross(n2, edge2, edge3);
-        cross(n3, edge4, edge5);
-        // Get center of tetrahedron "b" by averaging its vertices' coordinates, without dividing by 4.
-        for (int d=0; d<3; d++)
-            mpz_set(center[d], b->t.t[0][d]);
-        for (int p=1; p<4; p++)
-            for (int d=0; d<3; d++)
-                mpz_add(center[d], center[d], b->t.t[p][d]);
-        for (int d=0; d<3; d++)
-        {
-            mpz_mul_ui(edge1[d], b->t.t[0][d], 4); mpz_sub(edge1[d], center[d], edge1[d]);
-            mpz_mul_ui(edge2[d], b->t.t[1][d], 4); mpz_sub(edge2[d], center[d], edge2[d]);
-        }
-        dot(tmp[0], edge1, n0); if (mpz_cmp_ui(tmp[0], 0) > 0) for (int d=0; d<3; d++) mpz_neg(n0[d], n0[d]);
-        dot(tmp[0], edge1, n1); if (mpz_cmp_ui(tmp[0], 0) > 0) for (int d=0; d<3; d++) mpz_neg(n1[d], n1[d]);
-        dot(tmp[0], edge1, n2); if (mpz_cmp_ui(tmp[0], 0) > 0) for (int d=0; d<3; d++) mpz_neg(n2[d], n2[d]);
-        dot(tmp[0], edge2, n3); if (mpz_cmp_ui(tmp[0], 0) > 0) for (int d=0; d<3; d++) mpz_neg(n3[d], n3[d]);
-        for (int d=0; d<3; d++)
-        {
-            mpz_sub(edge1[d], a->t.t[0][d], b->t.t[0][d]);
-            mpz_sub(edge2[d], a->t.t[0][d], b->t.t[1][d]);
-        }
-        dot(tmp[0], edge1, n0); if    (mpz_cmp_ui(tmp[0], 0) >= 0) return false;
-        dot(tmp[0], edge1, n1); if    (mpz_cmp_ui(tmp[0], 0) >= 0) return false;
-        dot(tmp[0], edge1, n2); if    (mpz_cmp_ui(tmp[0], 0) >= 0) return false;
-        dot(tmp[0], edge2, n3); return mpz_cmp_ui(tmp[0], 0) <  0;
+        // But we can detect that case by checking the edgeEdgeIntersectionCount[] values.
+        return edgeEdgeIntersectionCount[0] == 2 &&
+               edgeEdgeIntersectionCount[1] == 2 &&
+               edgeEdgeIntersectionCount[2] == 2;
     }
 #else
 public:
@@ -461,6 +421,7 @@ public:
             if (dot(center, center) >= maximalTouchingSqrDistance)
                 return false;
         }
+        int8_t edgeEdgeIntersectionCount[4] = {}; // number of edges found to intersect with each face
         // In some circumstances, two tetrahedrons can intersect such that only the edges of one tetrahedron intersect with the
         // faces of the other, and not the other way around. So we need to check both.
         int maxEdgeNum = tetrahedronEdges_face3; // when "a" is the newly added tetrahedron, we can enable an optimization
@@ -513,6 +474,7 @@ public:
                     Coord3 delta = intersectionPoint - triangle[0];
                     Coord3 edge1 = triangle[1]       - triangle[0];
                     Coord3 edge2 = triangle[2]       - triangle[0];
+                    // Calculate barycentric coordinates {u,v} of the intersection point
                     Coord uNumerator = delta[1]*edge2[0] - delta[0]*edge2[1];
                     Coord vNumerator = delta[0]*edge1[1] - delta[1]*edge1[0];
                     Coord uvDenominator = edge1[1]*edge2[0] - edge1[0]*edge2[1];
@@ -524,9 +486,20 @@ public:
                         vNumerator = -vNumerator;
                         uvDenominator = -uvDenominator;
                     }
+                    if (uNumerator == 0 || vNumerator == 0)
+                    {
+                        edgeEdgeIntersectionCount[faceNum] += 1 - swapped;
+                        continue;
+                    }
                     if (uNumerator <= 0 || vNumerator <= 0)
                         continue;
-                    if (uNumerator + vNumerator < uvDenominator)
+                    Coord uvNumeratorSum = uNumerator + vNumerator;
+                    if (uvNumeratorSum == uvDenominator)
+                    {
+                        edgeEdgeIntersectionCount[faceNum] += 1 - swapped;
+                        return true;
+                    }
+                    if (uvNumeratorSum <  uvDenominator)
                         return true;
                 }
             }
@@ -534,24 +507,10 @@ public:
             maxEdgeNum = countof(tetrahedronEdges); // disable the optimization for when "b" is the newly added tetrahedron
         }
         // The above will fail to detect an overlap in which 3 edges of one tetrahedron perfectly intersect with 3 edges of the other.
-        // To handle this case, check if the new vertex of tetrahedron "A" is inside tetrahedron "B".
-        Coord3 n0 = cross(b->t[1]-b->t[0], b->t[2]-b->t[0]);
-        Coord3 n1 = cross(b->t[1]-b->t[0], b->t[3]-b->t[0]);
-        Coord3 n2 = cross(b->t[2]-b->t[0], b->t[3]-b->t[0]);
-        Coord3 n3 = cross(b->t[2]-b->t[1], b->t[3]-b->t[1]);
-        // Get center of tetrahedron "b" by averaging its vertices' coordinates, without dividing by 4.
-        Coord3 center;
-        center[0] = b->t[0][0] + b->t[1][0] + b->t[2][0] + b->t[3][0];
-        center[1] = b->t[0][1] + b->t[1][1] + b->t[2][1] + b->t[3][1];
-        center[2] = b->t[0][2] + b->t[1][2] + b->t[2][2] + b->t[3][2];
-        if (dot(center - b->t[0]*4, n0) > 0) n0 = -n0;
-        if (dot(center - b->t[0]*4, n1) > 0) n1 = -n1;
-        if (dot(center - b->t[0]*4, n2) > 0) n2 = -n2;
-        if (dot(center - b->t[1]*4, n3) > 0) n3 = -n3;
-        return dot(a->t[0] - b->t[0], n0) < 0 &&
-               dot(a->t[0] - b->t[0], n1) < 0 &&
-               dot(a->t[0] - b->t[0], n2) < 0 &&
-               dot(a->t[0] - b->t[1], n3) < 0;
+        // But we can detect that case by checking the edgeEdgeIntersectionCount[] values.
+        return edgeEdgeIntersectionCount[0] == 2 &&
+               edgeEdgeIntersectionCount[1] == 2 &&
+               edgeEdgeIntersectionCount[2] == 2;
     }
 #endif
 };
