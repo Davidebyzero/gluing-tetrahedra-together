@@ -150,13 +150,6 @@ static const int tetrahedronEdges[][2] =
     {1, 3},
     {2, 3},
 };
-// The two edges of each of the faces 0-2 that aren't shared with face 3, where each bottom-level element is a top-level index of the above table
-static const int tetrahedronFaceEdges[3][2] =
-{
-    {0, 1},
-    {0, 2},
-    {1, 2},
-};
 
 static const int faceRotateReflect[2][3][3] =
 {
@@ -245,8 +238,8 @@ Coord dot(const Coord3 &a, const Coord3 &b)
 #endif
 
 // This class must be used in exactly the way it is in this program. That is, setA() and setB() must be called first, before operator(),
-// and point to tetrahedrons in the same Polytet. The set(A) tetrahedron must be the last one newly attached to the polytet. If operator()
-// returns "true", both setA() and setB() must be called before the next operator() call.
+// and point to tetrahedrons in the same Polytet. Both tetrahedrons must be end pieces, singly attached. If operator() returns "true",
+// both setA() and setB() must be called before the next operator() call.
 class TetrahedronOverlap
 {
     const Tet *a;
@@ -298,26 +291,20 @@ public:
         int8_t edgeEdgeIntersectionCount[4] = {}; // number of edges found to intersect with each face
         // In some circumstances, two tetrahedrons can intersect such that only the edges of one tetrahedron intersect with the
         // faces of the other, and not the other way around. So we need to check both.
-        int maxEdgeNum = tetrahedronEdges_face3; // when "a" is the newly added tetrahedron, we can enable an optimization
-        bool skipEdgeB[_countof(tetrahedronEdges)] = {};
-        for (int swapped=0;;)
+        for (int swapped=0; swapped<2; swapped++)
         {
             // Take advantage of the fact that the two tetrahedrons are regular and congruent, and
             // just check if any edge of tetrahedron "a" intersects with any face of tetrahedron "b".
             // Don't count it if only the endpoint of an edge intersects.
-            for (int edgeNum=0; edgeNum<maxEdgeNum; edgeNum++)
+            for (int edgeNum=0; edgeNum < tetrahedronEdges_face3; edgeNum++)
             {
-                if (skipEdgeB[edgeNum])
-                    continue;
                 const mpz_t *p0 = a->t.t[tetrahedronEdges[edgeNum][0]];
                 const mpz_t *p1 = a->t.t[tetrahedronEdges[edgeNum][1]];
                 for (int faceNum=0; faceNum<4; faceNum++)
                 {
-                    // For speed, process only one out of every pair of attached faces (which share the exact same 3 vertices).
-                    // This will still process the very first attached face twice, since that is a face[3] attached to another face[3],
-                    // but it's probably not worth the extra machinery that would be necessary to special-case that.
-                    if (swapped ? faceNum==3
-                                : faceNum!=3 && b->faceAttached[faceNum])
+                    // Since it's guaranteed that due to the overlapCache, both tetrahedrons are single-attached end pieces, and all
+                    // collisions with nearer pieces are already cached, we can safely skip face[3]
+                    if (faceNum==3)
                         continue;
                     const mpz_t *normalizedTetrahedron[4][3]; // first 3 points are the face, and the 4th point is for calculating the normal
                     for (int i=0; i<4; i++)
@@ -390,7 +377,7 @@ public:
                         int vCmp = mpz_cmp_ui(vNumerator, 0);
                         if (uCmp == 0 || vCmp == 0)
                         {
-                            edgeEdgeIntersectionCount[faceNum] += 1 - swapped;
+                            edgeEdgeIntersectionCount[faceNum]++;
                             continue;
                         }
                         if (uCmp <= 0 || vCmp <= 0)
@@ -399,27 +386,19 @@ public:
                     mpz_add(uvNumeratorSum, uNumerator, vNumerator);
                     int uvCmp = mpz_cmp(uvNumeratorSum, uvDenominator);
                     if (uvCmp == 0)
-                        edgeEdgeIntersectionCount[faceNum] += 1 - swapped;
+                        edgeEdgeIntersectionCount[faceNum]++;
                     else
                     if (uvCmp < 0)
                         return true;
                 }
             }
             std::swap(a, b);
-            if (++swapped >= 2)
-                break;
-            maxEdgeNum = _countof(tetrahedronEdges); // disable the optimization for when "b" is the newly added tetrahedron
-            // Skip edges of tetrahedron B in the same way that its faces were skipped on the first pass
-            for (int faceNum=0; faceNum<3; faceNum++)
-                if (b->faceAttached[faceNum])
-                    for (int i=0; i<2; i++)
-                        skipEdgeB[tetrahedronFaceEdges[faceNum][i]] = true;
         }
         // The above will fail to detect an overlap in which 3 edges of one tetrahedron perfectly intersect with 3 edges of the other.
         // But we can detect that case by checking the edgeEdgeIntersectionCount[] values.
-        return edgeEdgeIntersectionCount[0] == 2 &&
-               edgeEdgeIntersectionCount[1] == 2 &&
-               edgeEdgeIntersectionCount[2] == 2;
+        return edgeEdgeIntersectionCount[0] == 4 &&
+               edgeEdgeIntersectionCount[1] == 4 &&
+               edgeEdgeIntersectionCount[2] == 4;
     }
 #else
 public:
@@ -443,26 +422,20 @@ public:
         int8_t edgeEdgeIntersectionCount[4] = {}; // number of edges found to intersect with each face
         // In some circumstances, two tetrahedrons can intersect such that only the edges of one tetrahedron intersect with the
         // faces of the other, and not the other way around. So we need to check both.
-        int maxEdgeNum = tetrahedronEdges_face3; // when "a" is the newly added tetrahedron, we can enable an optimization
-        bool skipEdgeB[_countof(tetrahedronEdges)] = {};
-        for (int swapped=0;;)
+        for (int swapped=0; swapped<2; swapped++)
         {
             // Take advantage of the fact that the two tetrahedrons are regular and congruent, and
             // just check if any edge of tetrahedron "a" intersects with any face of tetrahedron "b".
             // Don't count it if only the endpoint of an edge intersects.
-            for (int edgeNum=0; edgeNum<maxEdgeNum; edgeNum++)
+            for (int edgeNum=0; edgeNum < tetrahedronEdges_face3; edgeNum++)
             {
-                if (skipEdgeB[edgeNum])
-                    continue;
                 Coord3 p0 = a->t[tetrahedronEdges[edgeNum][0]];
                 Coord3 p1 = a->t[tetrahedronEdges[edgeNum][1]];
                 for (int faceNum=0; faceNum<4; faceNum++)
                 {
-                    // For speed, process only one out of every pair of attached faces (which share the exact same 3 vertices).
-                    // This will still process the very first attached face twice, since that is a face[3] attached to another face[3],
-                    // but it's probably not worth the extra machinery that would be necessary to special-case that.
-                    if (swapped ? faceNum==3
-                                : faceNum!=3 && b->faceAttached[faceNum])
+                    // Since it's guaranteed that due to the overlapCache, both tetrahedrons are single-attached end pieces, and all
+                    // collisions with nearer pieces are already cached, we can safely skip face[3]
+                    if (faceNum==3)
                         continue;
                     Tetrahedron normalizedTetrahedron; // first 3 points are the face, and the 4th point is for calculating the normal
                     for (int i=0; i<4; i++)
@@ -510,7 +483,7 @@ public:
                     }
                     if (uNumerator == 0 || vNumerator == 0)
                     {
-                        edgeEdgeIntersectionCount[faceNum] += 1 - swapped;
+                        edgeEdgeIntersectionCount[faceNum]++;
                         continue;
                     }
                     if (uNumerator <= 0 || vNumerator <= 0)
@@ -518,7 +491,7 @@ public:
                     Coord uvNumeratorSum = uNumerator + vNumerator;
                     if (uvNumeratorSum == uvDenominator)
                     {
-                        edgeEdgeIntersectionCount[faceNum] += 1 - swapped;
+                        edgeEdgeIntersectionCount[faceNum]++;
                         return true;
                     }
                     if (uvNumeratorSum <  uvDenominator)
@@ -526,20 +499,12 @@ public:
                 }
             }
             std::swap(a, b);
-            if (++swapped >= 2)
-                break;
-            maxEdgeNum = _countof(tetrahedronEdges); // disable the optimization for when "b" is the newly added tetrahedron
-            // Skip edges of tetrahedron B in the same way that its faces were skipped on the first pass
-            for (int faceNum=0; faceNum<3; faceNum++)
-                if (b->faceAttached[faceNum])
-                    for (int i=0; i<2; i++)
-                        skipEdgeB[tetrahedronFaceEdges[faceNum][i]] = true;
         }
         // The above will fail to detect an overlap in which 3 edges of one tetrahedron perfectly intersect with 3 edges of the other.
         // But we can detect that case by checking the edgeEdgeIntersectionCount[] values.
-        return edgeEdgeIntersectionCount[0] == 2 &&
-               edgeEdgeIntersectionCount[1] == 2 &&
-               edgeEdgeIntersectionCount[2] == 2;
+        return edgeEdgeIntersectionCount[0] == 4 &&
+               edgeEdgeIntersectionCount[1] == 4 &&
+               edgeEdgeIntersectionCount[2] == 4;
     }
 #endif
 };
