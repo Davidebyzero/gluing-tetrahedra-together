@@ -34,7 +34,7 @@ void quitMemory()
     exit(-1);
 }
 
-typedef uint8_t TetIndex;
+typedef int TetIndex;
 
 #if MAXIMUM_TETCOUNT > 17
 typedef uint64_t HashIndex;
@@ -83,13 +83,14 @@ typedef std::array<Coord, 3> Coord3;
 typedef std::array<Coord3, 4> Tetrahedron;
 #endif
 
+class Polytet;
 class Tet
 {
-    void tagSkipOverlapCheckHelper(int depth, const struct RotationTable *thisRotationTable, int faceRotation = 0, CompressedSubpolytet curCompressedPath = 0, CompressedSubpolytet trit = 1);
+    void tagSkipOverlapCheckHelper(Polytet &polytet, int depth, const struct RotationTable *thisRotationTable, int faceRotation = 0, CompressedSubpolytet curCompressedPath = 0, CompressedSubpolytet trit = 1);
 public:
     Tetrahedron t;
-    Tet    *faceAttached    [4];
-    uint8_t faceAttachedFace[4];
+    TetIndex faceAttached    [4];
+    uint8_t  faceAttachedFace[4];
     TetIndex index; // 1-based; 0=unassigned
     CompressedSubpolytet compressedPath; // 0 = skip overlap check
     Tet() : t()
@@ -98,17 +99,17 @@ public:
     }
     void init()
     {
-        faceAttached[0] = NULL; // t[0],t[1],t[2]
-        faceAttached[1] = NULL; // t[0],t[1],t[3]
-        faceAttached[2] = NULL; // t[0],t[2],t[3]
-        faceAttached[3] = NULL; // t[1],t[2],t[3]
+        faceAttached[0] = -1; // t[0],t[1],t[2]
+        faceAttached[1] = -1; // t[0],t[1],t[3]
+        faceAttached[2] = -1; // t[0],t[2],t[3]
+        faceAttached[3] = -1; // t[1],t[2],t[3]
     }
     void assignIndex(TetIndex &nextIndex)
     {
         if (index == 0)
             index = nextIndex++;
     }
-    void tagSkipOverlapCheck(int depth);
+    void tagSkipOverlapCheck(Polytet &polytet, int depth);
 };
 class Polytet : public std::array<Tet, MAXIMUM_TETCOUNT>
 {
@@ -506,8 +507,10 @@ public:
 #endif
 };
 
-void attachNewTet(Tet &t, Tet &tetToAttachTo, const int faceNum)
+void attachNewTet(Polytet &polytet, TetIndex i, TetIndex iAttachTo, const int faceNum)
 {
+    Tet &t             = polytet[i];
+    Tet &tetToAttachTo = polytet[iAttachTo];
 #ifdef USE_GMP
     mpz_t *newVertex = t.t.t[0];
     // Get center of face by averaging its vertices' coordinates.
@@ -549,12 +552,12 @@ void attachNewTet(Tet &t, Tet &tetToAttachTo, const int faceNum)
             t.t[1+p][d] = tetToAttachTo.t[p1][d];
 #endif
     }
-    t.faceAttached    [0] = NULL;
-    t.faceAttached    [1] = NULL;
-    t.faceAttached    [2] = NULL;
-    t.faceAttached    [3] = &tetToAttachTo;
+    t.faceAttached    [0] = -1;
+    t.faceAttached    [1] = -1;
+    t.faceAttached    [2] = -1;
+    t.faceAttached    [3] = iAttachTo;
     t.faceAttachedFace[3] = faceNum;
-    tetToAttachTo.faceAttached    [faceNum] = &t;
+    tetToAttachTo.faceAttached    [faceNum] = i;
     tetToAttachTo.faceAttachedFace[faceNum] = 3;
 }
 
@@ -571,7 +574,7 @@ class CompressedPolytet
             if (value & ((CompressedPolytetBits)1 << ((index - 1) * 3 + faceNum)))
             {
                 TetIndex thisIndex = nextIndex++;
-                attachNewTet(polytet[thisIndex], polytet[index], faceNum);
+                attachNewTet(polytet, thisIndex, index, faceNum);
                 uncompressHelper(thisIndex, nextIndex);
             }
         }
@@ -593,9 +596,9 @@ public:
             int rotatedFaceNum = faceRotateReflect[reflect][_faceNum][faceRotation];
 #endif
             int faceNum = thisRotationTable->faceMap[rotatedFaceNum];
-            Tet *attachedTet = tetToCompress.faceAttached[faceNum];
-            if (!attachedTet)
+            if (tetToCompress.faceAttached[faceNum] < 0)
                 continue;
+            Tet *attachedTet = &polytet[tetToCompress.faceAttached[faceNum]];
             attachedTet->assignIndex(polytet.nextIndex);
             value |= (CompressedPolytetBits)1 << ((tetToCompress.index - 1 - 1) * 3 + _faceNum);
 
@@ -624,7 +627,7 @@ size_t hash(const CompressedPolytetBits &value)
     return seed;
 }
 
-void Tet::tagSkipOverlapCheckHelper(int depth, const RotationTable *thisRotationTable, int faceRotation/* = 0*/, CompressedSubpolytet curCompressedPath/* = 0*/, CompressedSubpolytet trit/* = 1*/)
+void Tet::tagSkipOverlapCheckHelper(Polytet &polytet, int depth, const RotationTable *thisRotationTable, int faceRotation/* = 0*/, CompressedSubpolytet curCompressedPath/* = 0*/, CompressedSubpolytet trit/* = 1*/)
 {
     depth--;
     compressedPath = depth < 0 ? curCompressedPath : UINT64_MAX;
@@ -632,21 +635,21 @@ void Tet::tagSkipOverlapCheckHelper(int depth, const RotationTable *thisRotation
     {
         int rotatedFaceNum = faceRotateReflect[0][_faceNum][faceRotation];
         int faceNum = thisRotationTable->faceMap[rotatedFaceNum];
-        Tet *attachedTet = faceAttached[faceNum];
-        if (!attachedTet)
+        if (faceAttached[faceNum] < 0)
             continue;
+        Tet *attachedTet = &polytet[faceAttached[faceNum]];
         int attachedFace = faceAttachedFace[faceNum];
         int rotation = thisRotationTable->rotation[rotatedFaceNum];
-        attachedTet->tagSkipOverlapCheckHelper(depth, &rotationTable[attachedFace], rotation, curCompressedPath + trit * (_faceNum + 1), trit * 3);
+        attachedTet->tagSkipOverlapCheckHelper(polytet, depth, &rotationTable[attachedFace], rotation, curCompressedPath + trit * (_faceNum + 1), trit * 3);
     }
 }
-void Tet::tagSkipOverlapCheck(int depth)
+void Tet::tagSkipOverlapCheck(Polytet &polytet, int depth)
 {
     depth--;
     compressedPath = UINT64_MAX;
-    Tet *t = faceAttached[3];
+    Tet *t = &polytet[faceAttached[3]];
     int attachedFace = faceAttachedFace[3];
-    t->tagSkipOverlapCheckHelper(depth, &rotationTable[attachedFace]);
+    t->tagSkipOverlapCheckHelper(polytet, depth, &rotationTable[attachedFace]);
 }
 
 #ifdef USE_GMP
@@ -812,7 +815,7 @@ void enumerate(
     Polytet &polytet = LOCAL_STORAGE(workerPolytet);
     polytet[0].init();
     polytet[0].t = start;
-    attachNewTet(polytet[1], polytet[0], 3);
+    attachNewTet(polytet, 1, 0, 3);
     polytet.setSize(tetCount);
 
     CompressedPolytet newRotatedPolytet(polytet);
@@ -857,9 +860,9 @@ void enumerate(
                 Tet &tetToAttachTo = polytet[tetNumToAttachTo];
                 for (int faceNum=0; faceNum<3; faceNum++) // skip last face because it's always already attached
                 {
-                    if (tetToAttachTo.faceAttached[faceNum])
+                    if (tetToAttachTo.faceAttached[faceNum] >= 0)
                         continue;
-                    attachNewTet(newTet, tetToAttachTo, faceNum);
+                    attachNewTet(polytet, tetCount - 1, tetNumToAttachTo, faceNum);
                     // Canonicalize the rotation of this new polytet in compressed form, so that it can be compared against others
                     CompressedPolytetBits runningLeastPolytet[2] = {COMPRESSEDPOLYTETBITS_MAX, COMPRESSEDPOLYTETBITS_MAX};
 
@@ -883,9 +886,9 @@ void enumerate(
                         {
                             Tet &singlyAttachedTet = polytet[i];
                             for (int j=0; j<3; j++)
-                                if (singlyAttachedTet.faceAttached[j])
+                                if (singlyAttachedTet.faceAttached[j] >= 0)
                                     goto skipThisTet; // not a singly attached tet
-                            t = singlyAttachedTet.faceAttached[3];
+                            t = &polytet[singlyAttachedTet.faceAttached[3]];
                             int attachedFace = singlyAttachedTet.faceAttachedFace[3];
                             thisRotationTable = &rotationTable[attachedFace];
                         }
@@ -896,7 +899,7 @@ void enumerate(
                             {
                                 int rotatedFaceNum = faceRotateReflect[0][_faceNum][0];
                                 int faceNum = thisRotationTable->faceMap[rotatedFaceNum];
-                                if (t->faceAttached[faceNum])
+                                if (t->faceAttached[faceNum] >= 0)
                                     topValue |= 1 << _faceNum;
                             }
                             // Boost speed by canonicalizing the lower 3 bits to be only "001", "011", or "111".
@@ -943,7 +946,7 @@ void enumerate(
                     // and defer this until after the deduplication, to save a lot of time
                     overlap.setA(newTet);
                     // Set up the "skipOverlapCheck" flags to skip overlap checking up to a depth of 5
-                    newTet.tagSkipOverlapCheck(minOverlapDepth);
+                    newTet.tagSkipOverlapCheck(polytet, minOverlapDepth);
                     for (int tetCheckIntersectionI=0; tetCheckIntersectionI<polytet.size(); tetCheckIntersectionI++)
                     {
                         if (polytet[tetCheckIntersectionI].compressedPath == UINT64_MAX)
@@ -1027,13 +1030,13 @@ void enumerate(
                 skipDuplicate:
                 skipDueToOverlap:
 
-                    tetToAttachTo.faceAttached[faceNum] = NULL;
+                    tetToAttachTo.faceAttached[faceNum] = -1;
                 }
             }
 
-            polytet[1].faceAttached[0] = NULL;
-            polytet[1].faceAttached[1] = NULL;
-            polytet[1].faceAttached[2] = NULL;
+            polytet[1].faceAttached[0] = -1;
+            polytet[1].faceAttached[1] = -1;
+            polytet[1].faceAttached[2] = -1;
         }
     }
 }
