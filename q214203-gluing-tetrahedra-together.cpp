@@ -1025,7 +1025,8 @@ void enumerate(
                         }
                         memcpy(entry, &runningLeastPolytet[0], newPolytetsCompressedSize);
                         *index = ++newPolytetCount;
-                        *(HashIndex*)((uint8_t*)entry + newPolytetsCompressedSize) = 0; // pointer to next hash collision
+                        // No need to actually do the following, thanks to the "memset(polytetTable, 0, memoryUsagePolytetTable)"
+                        //*(HashIndex*)((uint8_t*)entry + newPolytetsCompressedSize) = 0; // pointer to next hash collision
                     }
                 skipDuplicate:
                 skipDueToOverlap:
@@ -1249,13 +1250,16 @@ int main(int argc, char *argv[])
             newPolytetCount, polytetChiralCount);
 #endif
 
-        memoryUsage = (uint8_t*)polytetTable + newPolytetCount * polytetTableElementSize - (uint8_t*)pool;
+        size_t memoryUsagePolytetTable = newPolytetCount * polytetTableElementSize;
+        memoryUsage = (uint8_t*)polytetTable + memoryUsagePolytetTable - (uint8_t*)pool;
 
         polytetCount = newPolytetCount;
         for (size_t i=0; i<polytetCount; i++)
             memcpy(
                 basePolytetTable       + i *                          newPolytetsCompressedSize,
                 (uint8_t*)polytetTable + i * polytetTableElementSize, newPolytetsCompressedSize);
+
+        memset(polytetTable, 0, memoryUsagePolytetTable); // allow skipping the explicit setting of "pointer to next hash collision" to zero
 
 #ifdef WRITE_TO_FILES
         writeFile(getCompressedPolytetFilename(tetCount), basePolytetTable, polytetCount * newPolytetsCompressedSize);
