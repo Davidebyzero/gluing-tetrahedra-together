@@ -6,20 +6,7 @@
 #include <string.h>
 #include <array>
 #include <chrono>
-
-#define USE_GMP
-#define MEMORY_POOL_INITIAL_SIZE (64uLL * 1024)  // in bytes; if the goal is to use more than half of available RAM, this must be preallocated at full expected size
-#define MEMORY_POOL_GROW_RATIO 1/16  // what proportion of the memory size to grow it by when more space is needed
-#define HASH_TABLE_RATIO 6
-#define SHOW_PROGRESS 16  // if defined, show progress starting at this term
-//#define PRINT_POLYTETS // requires USE_GMP
-
-#define MAXIMUM_TETCOUNT 17 // 28
-
-#define WRITE_TO_FILES
-#define RESUME_FROM_FILE
-
-#define FILE_CHUNK_SIZE (1uLL << 30)  // needs to be less than 1<<31
+#include "config.h"
 
 #ifdef USE_GMP
 #   include <gmp.h>
@@ -27,6 +14,12 @@
 #       error This is hard-coded for 64-bit limbs
 #   endif
 #endif
+
+#ifdef MULTITHREADING
+    #include <thread>
+    #include <boost/thread/mutex.hpp>
+    typedef unsigned THREAD_ID;
+#endif // MULTITHREADING
 
 #ifndef _countof
     #define _countof(a) (sizeof(a)/sizeof(*(a)))
@@ -100,6 +93,10 @@ public:
     TetIndex index; // 1-based; 0=unassigned
     CompressedSubpolytet compressedPath; // 0 = skip overlap check
     Tet() : t()
+    {
+        init();
+    }
+    void init()
     {
         faceAttached[0] = NULL; // t[0],t[1],t[2]
         faceAttached[1] = NULL; // t[0],t[1],t[3]
@@ -618,7 +615,7 @@ public:
         }
     }
 };
-size_t hash(CompressedPolytetBits value)
+size_t hash(const CompressedPolytetBits &value)
 {
     std::size_t seed  = std::hash<uint64_t>{}(((uint64_t*)&value)[0]);
 #if MAXIMUM_TETCOUNT > 23
@@ -747,187 +744,96 @@ void mul_start_3(Tetrahedron &start, Coord &maximalTouchingSqrDistance, Compress
     minUnseenCompressedSubpolytet = minUnseenCompressedSubpolytet * 3 + 1;
 }
 
-int main(int argc, char *argv[])
-{
-    if (uint64_t x=1; !*(uint8_t*)&x)
+#ifdef MULTITHREADING
+    static boost::mutex hashTableMutex;
+    static boost::mutex workAssignmentMutex;
+    static bool hashTableInUse = false;
+
+    struct WorkerJob
     {
-        std::cerr << "Error: This program is hard-coded for little-endian byte order" << std::endl;
-        exit(-1);
-    }
-    // The maximum distance between two touching congruent regular tetrahedrons is twice the radius (distance between the center of a tetrahedron and one of its vertices)
-    const unsigned MAXIMAL_TOUCHING_SQR_DISTANCE =
-        9*9    // squared coordinate of "start" tetrahedron
-        * 3    // number of dimensions
-        * 4*4  // squared number of vertices (to avoid dividing by 4 when averaging to get center coordinates)
-        * 2*2; // twice the radius, so we square that too
-    initLookupTables();
+#endif // MULTITHREADING
+        Polytet workerPolytet;
+        TetrahedronOverlap workerOverlap;
+#ifdef MULTITHREADING
+    };
+    static WorkerJob workerJobs[WORKER_THREADS];
+
+    #define LOCAL_STORAGE(member) workerJobs[threadID].member
+#else // !MULTITHREADING
+    #define LOCAL_STORAGE(member) member
+#endif
+
+void enumerate(
+#ifdef MULTITHREADING
+    THREAD_ID threadID,
+    size_t &nextWorkAssignment,
+    size_t workAssignmentLength,
+#endif
+
+    const Tetrahedron &start,
 #ifdef USE_GMP
-    Tetrahedron start;
-    for (int d=0; d<3; d++)
-    {
-        mpz_set_si(start.t[0][d], -9);
-        for (int p=1; p<4; p++)
-            mpz_set_si(start.t[p][d], 9);
-    }
-    for (int p=1; p<4; p++)
-        mpz_set_si(start.t[p][p-1], -9);
-    mpz_t      maximalTouchingSqrDistance;
-    mpz_init  (maximalTouchingSqrDistance);
-    mpz_set_ui(maximalTouchingSqrDistance, MAXIMAL_TOUCHING_SQR_DISTANCE);
+    const mpz_t maximalTouchingSqrDistance,
 #else
-    static Tetrahedron start =
-    {{
-        {{-9,-9,-9}},
-        {{-9, 9, 9}},
-        {{ 9,-9, 9}},
-        {{ 9, 9,-9}}
-    }};
-    static Coord maximalTouchingSqrDistance = MAXIMAL_TOUCHING_SQR_DISTANCE;
+    const Coord maximalTouchingSqrDistance,
 #endif
 
-    CompressedSubpolytet minUnseenCompressedSubpolytet = 0;
-    bool *overlapCache; // A bitmap (packed booleans) was tried, and was a bit slower; so, we'll use 8 times as much RAM to get slightly better speed
-    {
-        size_t overlapCacheSize = 0;
-        for (int i=0; i<MAXIMUM_TETCOUNT-2; i++)
-            overlapCacheSize = overlapCacheSize * 3 + 1;
-        overlapCache = (bool*)malloc(overlapCacheSize);
-        memset(overlapCache, 0, overlapCacheSize);
-        std::cout << "Allocated " << overlapCacheSize << " bytes for overlap caching" << std::endl;
-    }
+    bool *overlapCache,
+    bool &foundOverlaps,
 
-    size_t poolSize;
-    void *pool = NULL;
+    const int tetCount,
+    void *&pool,
+    size_t &poolSize,
+    const uint8_t *&basePolytetTable,
+    const int basePolytetCompressedSize,
+    const size_t polytetCount,
 
-    TetrahedronOverlap overlap;
-    int minOverlapDepth = 2;
-    bool foundOverlaps = false;
+    int minOverlapDepth,
+    const CompressedSubpolytet minUnseenCompressedSubpolytet,
 
-    size_t prevPolytetCount = 0;
-    size_t polytetCount = 1;
-    size_t memoryUsage = 0;
-    
-    int tetCount=1;
-    bool resumedFromFile = false;
-    size_t polytetChiralCount;
-#ifdef RESUME_FROM_FILE
-    {
-        FILE *resumeFile = NULL;
-        const char *filename;
-        for (int i=3;; i++)
-        {
-            if (FILE *f = fopen(filename = getCompressedPolytetFilename(i), "rb"))
-            {
-                if (resumeFile) fclose(resumeFile);
-                resumeFile = f;
-                tetCount = i;
-                mul_start_3(start, maximalTouchingSqrDistance, minUnseenCompressedSubpolytet);
-            }
-            else
-                break;
-        }
-        if (resumeFile)
-        {
-            fseeko64(resumeFile, 0, SEEK_END);
-            size_t size = ftello64(resumeFile);
-            poolSize = size;
-            if (poolSize < MEMORY_POOL_INITIAL_SIZE)
-                poolSize = MEMORY_POOL_INITIAL_SIZE;
-            pool = malloc(poolSize);
-            if (!pool)
-            {
-                fclose(resumeFile);
-                quitMemory();
-            }
-            int polytetsCompressedSize = ((tetCount - 2) * 3 + 8-1) / 8;
-            polytetCount = size / polytetsCompressedSize;
-            if (!readAndCloseOpenedFile(resumeFile, (uint8_t*)pool, size) || !readFile(filename = OVERLAP_BITMAP_FILENAME, (uint8_t*)overlapCache, minUnseenCompressedSubpolytet))
-            {
-                std::cerr << "Error reading file \"" << filename << "\"" << std::endl;
-                goto errorQuit;
-            }
-            resumedFromFile = true;
-            // Reconstruct minOverlapDepth from loaded file
-            CompressedSubpolytet minOverlapCompressedSubpolytet = 0;
-            for (; minOverlapCompressedSubpolytet < minUnseenCompressedSubpolytet; minOverlapCompressedSubpolytet++)
-                if (overlapCache[minOverlapCompressedSubpolytet])
-                    break;
-            minOverlapDepth = 1;
-            while (minOverlapCompressedSubpolytet)
-            {
-                minOverlapCompressedSubpolytet /= 3;
-                minOverlapDepth++;
-            }
-        }
-    }
-    if (!pool)
-#endif
-    {
-        pool = malloc(poolSize = MEMORY_POOL_INITIAL_SIZE);
-        if (!pool) quitMemory();
-    }
+    HashIndex *&hashTable,
+    const size_t hashTableSize,
+    void *&polytetTable,
+    const int newPolytetsCompressedSize,
+    const int polytetTableElementSize,
 
-    polytetChiralCount = 0;
-    for (;;)
-    {
-        auto currentTime = std::chrono::steady_clock::now();
-        std::cout << tetCount << ": ";
-        if (resumedFromFile)
-            std::cout << "resumed";
-        else
-            std::cout << polytetCount + polytetChiralCount;
-        std::cout << " (" << polytetCount << ") [" << std::chrono::duration_cast<std::chrono::milliseconds>(currentTime - startTime).count() << " ms";
-        if (memoryUsage)
-            std::cout << ", " << memoryUsage << " bytes";
-        std::cout << "]" << std::endl;
-        if (prevPolytetCount > polytetCount)
-        {
-            std::cerr << "Quit due to apparent overflow" << std::endl;
-            break;
-        }
-        prevPolytetCount = polytetCount;
-        if (++tetCount <= 2)
-            continue;
-        if (tetCount > MAXIMUM_TETCOUNT)
-            break;
-
-        int basePolytetCompressedSize = ((tetCount - 3) * 3 + 8-1) / 8;
-        size_t hashTableSize = polytetCount * HASH_TABLE_RATIO;
-        uint8_t *basePolytetTable;
-        HashIndex *hashTable;
-        void *polytetTable;
-        for (;;)
-        {
-            basePolytetTable = (uint8_t*)pool;
-            size_t basePolytetTableSize = basePolytetCompressedSize * polytetCount;
-            hashTable = (HashIndex*)(basePolytetTable + basePolytetTableSize);
-            polytetTable = hashTable + hashTableSize;
-            size_t minSize = (uint8_t*)polytetTable - (uint8_t*)pool;
-            if (minSize < poolSize)
-                break;
-            void *newPool = realloc(pool, basePolytetTableSize); // so that if the below realloc() results in a move, only what memory actually needs to be moved will be moved
-            if (!newPool) {free(pool); quitMemory();}
-            void *newPool2 = realloc(newPool, poolSize = minSize + minSize * MEMORY_POOL_GROW_RATIO);
-            if (!newPool2) {free(newPool); quitMemory();}
-            pool = newPool2;
-        }
-        memset(hashTable, 0, hashTableSize * sizeof(HashIndex));
-        const int newPolytetsCompressedSize = ((tetCount - 2) * 3 + 8-1) / 8;
-        const int polytetTableElementSize = newPolytetsCompressedSize + sizeof(HashIndex);
-        size_t newPolytetCount = 0;
+    size_t &newPolytetCount,
+    size_t &polytetChiralCount)
+{
 #ifdef SHOW_PROGRESS
-        size_t nextProgressOutput = tetCount < SHOW_PROGRESS ? UINT64_MAX : 0;
-        size_t progressOutputInterval = polytetCount / 1000;
+#   ifdef MULTITHREADING
+#       error SHOW_PROGRESS is currently incompatible with MULTITHREADING.
+#   endif
+    size_t nextProgressOutput = tetCount < SHOW_PROGRESS ? UINT64_MAX : 0;
+    size_t progressOutputInterval = polytetCount / 1000;
 #endif
 
-        Polytet polytet;
-        polytet[0].t = start;
-        attachNewTet(polytet[1], polytet[0], 3);
-        polytet.setSize(tetCount);
+    TetrahedronOverlap &overlap = LOCAL_STORAGE(workerOverlap);
 
-        CompressedPolytet newRotatedPolytet(polytet);
-        polytetChiralCount = 0;
+    Polytet &polytet = LOCAL_STORAGE(workerPolytet);
+    polytet[0].init();
+    polytet[0].t = start;
+    attachNewTet(polytet[1], polytet[0], 3);
+    polytet.setSize(tetCount);
+
+    CompressedPolytet newRotatedPolytet(polytet);
+
+#ifdef MULTITHREADING
+    for (;;)
+#endif
+    {
+#ifdef MULTITHREADING
+        size_t basePolytet0;
+        size_t basePolytet1;
+        {
+            boost::mutex::scoped_lock lock(workAssignmentMutex);
+            if (nextWorkAssignment >= polytetCount)
+                break;
+            nextWorkAssignment = basePolytet1 = std::min((basePolytet0 = nextWorkAssignment) + workAssignmentLength, polytetCount);
+        }
+        for (size_t basePolytetI = basePolytet0; basePolytetI < basePolytet1; basePolytetI++)
+#else
         for (size_t basePolytetI=0; basePolytetI<polytetCount; basePolytetI++)
+#endif
         {
 #ifdef SHOW_PROGRESS
             if (basePolytetI >= nextProgressOutput)
@@ -1019,18 +925,19 @@ int main(int argc, char *argv[])
                         runningLeastPolytet[0] = runningLeastPolytet[1];
 
                     HashIndex *index = &hashTable[hash(runningLeastPolytet[0]) % hashTableSize];
-                    void *entry;
-                    for (;;)
                     {
-                        if (*index == 0)
+#ifdef MULTITHREADING
+                        //boost::mutex::scoped_lock lock(hashTableMutex); // is a very rare race condition possible without this lock?
+#endif
+                        for (;;)
                         {
-                            entry = (uint8_t*)polytetTable + newPolytetCount * polytetTableElementSize;
-                            break; // no duplicate of runningLeastPolytet[0] was found in hash table
+                            if (*index == 0)
+                                break; // no duplicate of runningLeastPolytet[0] was found in hash table
+                            void *entry = (uint8_t*)polytetTable + (size_t)(*index - 1) * polytetTableElementSize;
+                            if (memcmp(entry, &runningLeastPolytet[0], newPolytetsCompressedSize) == 0)
+                                goto skipDuplicate;
+                            index = (HashIndex*)((uint8_t*)entry + newPolytetsCompressedSize);
                         }
-                        entry = (uint8_t*)polytetTable + (size_t)(*index - 1) * polytetTableElementSize;
-                        if (memcmp(entry, &runningLeastPolytet[0], newPolytetsCompressedSize) == 0)
-                            goto skipDuplicate;
-                        index = (HashIndex*)((uint8_t*)entry + newPolytetsCompressedSize);
                     }
                     // Check for overlap between this newly attached tetrahedron and the existing ones,
                     // and defer this until after the deduplication, to save a lot of time
@@ -1079,22 +986,44 @@ int main(int argc, char *argv[])
 #if defined(USE_GMP) && defined(PRINT_POLYTETS)
                     printPolytet(polytet);
 #endif
-                    polytetChiralCount += isChiral;
-                    if ((uint8_t*)entry + polytetTableElementSize - (uint8_t*)pool > poolSize)
                     {
-                        void *newPool = realloc(pool, poolSize += poolSize * MEMORY_POOL_GROW_RATIO);
-                        if (!newPool) {free(pool); quitMemory();}
-                        ptrdiff_t diff = (uint8_t*)newPool - (uint8_t*)pool;
-                        pool = newPool;
-                        (uint8_t*&)basePolytetTable += diff;
-                        (uint8_t*&)hashTable        += diff;
-                        (uint8_t*&)polytetTable     += diff;
-                        (uint8_t*&)index            += diff;
-                        (uint8_t*&)entry            += diff;
+#ifdef MULTITHREADING
+                        boost::mutex::scoped_lock lock(hashTableMutex);
+                        if (*index != 0)
+                        {
+                            for (;;)
+                            {
+                                void *entry = (uint8_t*)polytetTable + (size_t)(*index - 1) * polytetTableElementSize;
+                                if (memcmp(entry, &runningLeastPolytet[0], newPolytetsCompressedSize) == 0)
+                                    goto skipDuplicate;
+                                index = (HashIndex*)((uint8_t*)entry + newPolytetsCompressedSize);
+                                if (*index == 0)
+                                    break; // no duplicate of runningLeastPolytet[0] was found in hash table
+                            }
+                        }
+#endif
+                        void *entry = (uint8_t*)polytetTable + newPolytetCount * polytetTableElementSize;
+                        polytetChiralCount += isChiral;
+                        if ((uint8_t*)entry + polytetTableElementSize - (uint8_t*)pool > poolSize)
+                        {
+#ifdef MULTITHREADING
+                            quitMemory();
+#else
+                            void *newPool = realloc(pool, poolSize += poolSize * MEMORY_POOL_GROW_RATIO);
+                            if (!newPool) {free(pool); quitMemory();}
+                            ptrdiff_t diff = (uint8_t*)newPool - (uint8_t*)pool;
+                            pool = newPool;
+                            (const uint8_t*&)basePolytetTable += diff;
+                            (const uint8_t*&)hashTable        += diff;
+                            (const uint8_t*&)polytetTable     += diff;
+                            (const uint8_t*&)index            += diff;
+                            (const uint8_t*&)entry            += diff;
+#endif
+                        }
+                        memcpy(entry, &runningLeastPolytet[0], newPolytetsCompressedSize);
+                        *index = ++newPolytetCount;
+                        *(HashIndex*)((uint8_t*)entry + newPolytetsCompressedSize) = 0; // pointer to next hash collision
                     }
-                    memcpy(entry, &runningLeastPolytet[0], newPolytetsCompressedSize);
-                    *index = ++newPolytetCount;
-                    *(HashIndex*)((uint8_t*)entry + newPolytetsCompressedSize) = 0; // pointer to next hash collision
                 skipDuplicate:
                 skipDueToOverlap:
 
@@ -1106,6 +1035,216 @@ int main(int argc, char *argv[])
             polytet[1].faceAttached[1] = NULL;
             polytet[1].faceAttached[2] = NULL;
         }
+    }
+}
+
+int main(int argc, char *argv[])
+{
+    if (uint64_t x=1; !*(uint8_t*)&x)
+    {
+        std::cerr << "Error: This program is hard-coded for little-endian byte order" << std::endl;
+        exit(-1);
+    }
+    // The maximum distance between two touching congruent regular tetrahedrons is twice the radius (distance between the center of a tetrahedron and one of its vertices)
+    const unsigned MAXIMAL_TOUCHING_SQR_DISTANCE =
+        9*9    // squared coordinate of "start" tetrahedron
+        * 3    // number of dimensions
+        * 4*4  // squared number of vertices (to avoid dividing by 4 when averaging to get center coordinates)
+        * 2*2; // twice the radius, so we square that too
+    initLookupTables();
+#ifdef USE_GMP
+    Tetrahedron start;
+    for (int d=0; d<3; d++)
+    {
+        mpz_set_si(start.t[0][d], -9);
+        for (int p=1; p<4; p++)
+            mpz_set_si(start.t[p][d], 9);
+    }
+    for (int p=1; p<4; p++)
+        mpz_set_si(start.t[p][p-1], -9);
+    mpz_t      maximalTouchingSqrDistance;
+    mpz_init  (maximalTouchingSqrDistance);
+    mpz_set_ui(maximalTouchingSqrDistance, MAXIMAL_TOUCHING_SQR_DISTANCE);
+#else
+    static Tetrahedron start =
+    {{
+        {{-9,-9,-9}},
+        {{-9, 9, 9}},
+        {{ 9,-9, 9}},
+        {{ 9, 9,-9}}
+    }};
+    static Coord maximalTouchingSqrDistance = MAXIMAL_TOUCHING_SQR_DISTANCE;
+#endif
+
+    CompressedSubpolytet minUnseenCompressedSubpolytet = 0;
+    bool *overlapCache; // A bitmap (packed booleans) was tried, and was a bit slower; so, we'll use 8 times as much RAM to get slightly better speed
+    {
+        size_t overlapCacheSize = 0;
+        for (int i=0; i<MAXIMUM_TETCOUNT-2; i++)
+            overlapCacheSize = overlapCacheSize * 3 + 1;
+        overlapCache = (bool*)malloc(overlapCacheSize);
+        memset(overlapCache, 0, overlapCacheSize);
+        std::cout << "Allocated " << overlapCacheSize << " bytes for overlap caching" << std::endl;
+    }
+
+    size_t poolSize;
+    void *pool = NULL;
+
+    int minOverlapDepth = 2;
+    bool foundOverlaps = false;
+
+    size_t prevPolytetCount = 0;
+    size_t polytetCount = 1;
+    size_t memoryUsage = 0;
+
+    int tetCount=1;
+    bool resumedFromFile = false;
+    size_t polytetChiralCount;
+#ifdef RESUME_FROM_FILE
+    {
+        FILE *resumeFile = NULL;
+        const char *filename;
+        for (int i=3;; i++)
+        {
+            if (FILE *f = fopen(filename = getCompressedPolytetFilename(i), "rb"))
+            {
+                if (resumeFile) fclose(resumeFile);
+                resumeFile = f;
+                tetCount = i;
+                mul_start_3(start, maximalTouchingSqrDistance, minUnseenCompressedSubpolytet);
+            }
+            else
+                break;
+        }
+        if (resumeFile)
+        {
+            fseeko64(resumeFile, 0, SEEK_END);
+            size_t size = ftello64(resumeFile);
+            poolSize = size;
+            if (poolSize < MEMORY_POOL_INITIAL_SIZE)
+                poolSize = MEMORY_POOL_INITIAL_SIZE;
+            pool = malloc(poolSize);
+            if (!pool)
+            {
+                fclose(resumeFile);
+                quitMemory();
+            }
+            int polytetsCompressedSize = ((tetCount - 2) * 3 + 8-1) / 8;
+            polytetCount = size / polytetsCompressedSize;
+            if (!readAndCloseOpenedFile(resumeFile, (uint8_t*)pool, size) || !readFile(filename = OVERLAP_BITMAP_FILENAME, (uint8_t*)overlapCache, minUnseenCompressedSubpolytet))
+            {
+                std::cerr << "Error reading file \"" << filename << "\"" << std::endl;
+                goto errorQuit;
+            }
+            resumedFromFile = true;
+            // Reconstruct minOverlapDepth from loaded file
+            CompressedSubpolytet minOverlapCompressedSubpolytet = 0;
+            for (; minOverlapCompressedSubpolytet < minUnseenCompressedSubpolytet; minOverlapCompressedSubpolytet++)
+                if (overlapCache[minOverlapCompressedSubpolytet])
+                    break;
+            minOverlapDepth = 1;
+            while (minOverlapCompressedSubpolytet)
+            {
+                minOverlapCompressedSubpolytet /= 3;
+                minOverlapDepth++;
+            }
+        }
+    }
+    if (!pool)
+#endif
+    {
+        pool = malloc(poolSize = MEMORY_POOL_INITIAL_SIZE);
+        if (!pool) quitMemory();
+    }
+
+#ifdef MULTITHREADING
+    std::thread workers[WORKER_THREADS];
+#endif
+
+    polytetChiralCount = 0;
+    for (;;)
+    {
+        auto currentTime = std::chrono::steady_clock::now();
+        std::cout << tetCount << ": ";
+        if (resumedFromFile)
+            std::cout << "resumed";
+        else
+            std::cout << polytetCount + polytetChiralCount;
+        std::cout << " (" << polytetCount << ") [" << std::chrono::duration_cast<std::chrono::milliseconds>(currentTime - startTime).count() << " ms";
+        if (memoryUsage)
+            std::cout << ", " << memoryUsage << " bytes";
+        std::cout << "]" << std::endl;
+        if (prevPolytetCount > polytetCount)
+        {
+            std::cerr << "Quit due to apparent overflow" << std::endl;
+            break;
+        }
+        prevPolytetCount = polytetCount;
+        if (++tetCount <= 2)
+            continue;
+        if (tetCount > MAXIMUM_TETCOUNT)
+            break;
+
+        int basePolytetCompressedSize = ((tetCount - 3) * 3 + 8-1) / 8;
+        size_t hashTableSize = polytetCount * HASH_TABLE_RATIO;
+        uint8_t *basePolytetTable;
+        HashIndex *hashTable;
+        void *polytetTable;
+        for (;;)
+        {
+            basePolytetTable = (uint8_t*)pool;
+            size_t basePolytetTableSize = basePolytetCompressedSize * polytetCount;
+            hashTable = (HashIndex*)(basePolytetTable + basePolytetTableSize);
+            polytetTable = hashTable + hashTableSize;
+            size_t minSize = (uint8_t*)polytetTable - (uint8_t*)pool;
+            if (minSize < poolSize)
+                break;
+#ifdef MULTITHREADING
+            quitMemory();
+#else
+            void *newPool = realloc(pool, basePolytetTableSize); // so that if the below realloc() results in a move, only what memory actually needs to be moved will be moved
+            if (!newPool) {free(pool); quitMemory();}
+            void *newPool2 = realloc(newPool, poolSize = minSize + minSize * MEMORY_POOL_GROW_RATIO);
+            if (!newPool2) {free(newPool); quitMemory();}
+            pool = newPool2;
+#endif
+        }
+        memset(hashTable, 0, hashTableSize * sizeof(HashIndex));
+        const int newPolytetsCompressedSize = ((tetCount - 2) * 3 + 8-1) / 8;
+        const int polytetTableElementSize = newPolytetsCompressedSize + sizeof(HashIndex);
+        size_t newPolytetCount = 0;
+
+        size_t nextWorkAssignment = 0;
+        size_t workAssignmentLength = polytetCount / WORKER_THREADS;
+        if (workAssignmentLength < 1)
+            workAssignmentLength = 1;
+        else
+        if (workAssignmentLength > MAXIMUM_WORK_ASSIGNMENT)
+            workAssignmentLength = MAXIMUM_WORK_ASSIGNMENT;
+        polytetChiralCount = 0;
+#ifdef MULTITHREADING
+        for (THREAD_ID threadID=0; threadID < WORKER_THREADS; threadID++)
+        {
+            workers[threadID] = std::thread(enumerate,
+                threadID, std::ref(nextWorkAssignment), workAssignmentLength,
+                std::ref(start), maximalTouchingSqrDistance,
+                overlapCache, std::ref(foundOverlaps),
+                tetCount, std::ref(pool), std::ref(poolSize), std::ref((const uint8_t *&)basePolytetTable), basePolytetCompressedSize, polytetCount,
+                minOverlapDepth, minUnseenCompressedSubpolytet,
+                std::ref(hashTable), hashTableSize, std::ref(polytetTable), newPolytetsCompressedSize, polytetTableElementSize,
+                std::ref(newPolytetCount), std::ref(polytetChiralCount));
+        }
+        for (THREAD_ID threadID=0; threadID < WORKER_THREADS; threadID++)
+            workers[threadID].join();
+#else
+        enumerate(
+            start, maximalTouchingSqrDistance,
+            overlapCache, foundOverlaps,
+            tetCount, pool, poolSize, (const uint8_t *&)basePolytetTable, basePolytetCompressedSize, polytetCount,
+            minOverlapDepth, minUnseenCompressedSubpolytet,
+            hashTable, hashTableSize, polytetTable, newPolytetsCompressedSize, polytetTableElementSize,
+            newPolytetCount, polytetChiralCount);
+#endif
 
         memoryUsage = (uint8_t*)polytetTable + newPolytetCount * polytetTableElementSize - (uint8_t*)pool;
 
