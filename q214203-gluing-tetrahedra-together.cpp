@@ -748,7 +748,7 @@ void mul_start_3(Tetrahedron &start, Coord &maximalTouchingSqrDistance, Compress
 }
 
 #ifdef MULTITHREADING
-    static boost::mutex hashTableMutex;
+    static boost::mutex hashTableMutex[HASH_TABLE_SHARDS]; // shard the hash table locking
     static boost::mutex workAssignmentMutex;
     static bool hashTableInUse = false;
 
@@ -800,7 +800,12 @@ void enumerate(
     const int polytetTableElementSize,
 
     size_t &newPolytetCount,
-    size_t &polytetChiralCount)
+#ifdef MULTITHREADING
+    size_t *polytetChiralCount
+#else
+    size_t &polytetChiralCount
+#endif
+    )
 {
 #ifdef SHOW_PROGRESS
 #   ifdef MULTITHREADING
@@ -927,10 +932,14 @@ void enumerate(
                     if (isChiral && runningLeastPolytet[1] <  runningLeastPolytet[0])
                         runningLeastPolytet[0] = runningLeastPolytet[1];
 
-                    HashIndex *index = &hashTable[hash(runningLeastPolytet[0]) % hashTableSize];
+                    size_t hashIndex = hash(runningLeastPolytet[0]) % hashTableSize;
+                    HashIndex *index = &hashTable[hashIndex];
+#ifdef MULTITHREADING
+                    int shard = hashIndex % HASH_TABLE_SHARDS;
+#endif
                     {
 #ifdef MULTITHREADING
-                        //boost::mutex::scoped_lock lock(hashTableMutex); // is a very rare race condition possible without this lock?
+                        //boost::mutex::scoped_lock lock(hashTableMutex[shard]); // is a very rare race condition possible without this lock?
 #endif
                         for (;;)
                         {
@@ -991,7 +1000,7 @@ void enumerate(
 #endif
                     {
 #ifdef MULTITHREADING
-                        boost::mutex::scoped_lock lock(hashTableMutex);
+                        boost::mutex::scoped_lock lock(hashTableMutex[shard]);
                         if (*index != 0)
                         {
                             for (;;)
@@ -1004,9 +1013,13 @@ void enumerate(
                                     break; // no duplicate of runningLeastPolytet[0] was found in hash table
                             }
                         }
+                        size_t newPolytetCountFetched = __atomic_fetch_add(&newPolytetCount, 1, __ATOMIC_RELAXED);
+                        void *entry = (uint8_t*)polytetTable + newPolytetCountFetched * polytetTableElementSize;
+                        polytetChiralCount[threadID] += isChiral;
+#else
+                        void *entry = (uint8_t*)polytetTable + newPolytetCount        * polytetTableElementSize;
+                        polytetChiralCount           += isChiral;
 #endif
-                        void *entry = (uint8_t*)polytetTable + newPolytetCount * polytetTableElementSize;
-                        polytetChiralCount += isChiral;
                         if ((uint8_t*)entry + polytetTableElementSize - (uint8_t*)pool > poolSize)
                         {
 #ifdef MULTITHREADING
@@ -1024,7 +1037,11 @@ void enumerate(
 #endif
                         }
                         memcpy(entry, &runningLeastPolytet[0], newPolytetsCompressedSize);
+#ifdef MULTITHREADING
+                        *index = newPolytetCountFetched + 1;
+#else
                         *index = ++newPolytetCount;
+#endif
                         // No need to actually do the following, thanks to the "memset(polytetTable, 0, memoryUsagePolytetTable)"
                         //*(HashIndex*)((uint8_t*)entry + newPolytetsCompressedSize) = 0; // pointer to next hash collision
                     }
@@ -1103,7 +1120,11 @@ int main(int argc, char *argv[])
 
     int tetCount=1;
     bool resumedFromFile = false;
+#ifdef MULTITHREADING
+    size_t polytetChiralCount[WORKER_THREADS];
+#else
     size_t polytetChiralCount;
+#endif
 #ifdef RESUME_FROM_FILE
     {
         FILE *resumeFile = NULL;
@@ -1163,9 +1184,11 @@ int main(int argc, char *argv[])
 
 #ifdef MULTITHREADING
     std::thread workers[WORKER_THREADS];
-#endif
 
+    memset(polytetChiralCount, 0, WORKER_THREADS * sizeof(*polytetChiralCount));
+#else
     polytetChiralCount = 0;
+#endif
     for (;;)
     {
         auto currentTime = std::chrono::steady_clock::now();
@@ -1173,7 +1196,16 @@ int main(int argc, char *argv[])
         if (resumedFromFile)
             std::cout << "resumed";
         else
-            std::cout << polytetCount + polytetChiralCount;
+        {
+            size_t polytetCountOneSided = polytetCount;
+#ifdef MULTITHREADING
+            for (THREAD_ID threadID=0; threadID < WORKER_THREADS; threadID++)
+                polytetCountOneSided += polytetChiralCount[threadID];
+#else
+            polytetCountOneSided += polytetChiralCount;
+#endif
+            std::cout << polytetCountOneSided;
+        }
         std::cout << " (" << polytetCount << ") [" << std::chrono::duration_cast<std::chrono::milliseconds>(currentTime - startTime).count() << " ms";
         if (memoryUsage)
             std::cout << ", " << memoryUsage << " bytes";
@@ -1225,8 +1257,8 @@ int main(int argc, char *argv[])
         else
         if (workAssignmentLength > MAXIMUM_WORK_ASSIGNMENT)
             workAssignmentLength = MAXIMUM_WORK_ASSIGNMENT;
-        polytetChiralCount = 0;
 #ifdef MULTITHREADING
+        memset(polytetChiralCount, 0, WORKER_THREADS * sizeof(*polytetChiralCount));
         for (THREAD_ID threadID=0; threadID < WORKER_THREADS; threadID++)
         {
             workers[threadID] = std::thread(enumerate,
@@ -1236,11 +1268,12 @@ int main(int argc, char *argv[])
                 tetCount, std::ref(pool), std::ref(poolSize), std::ref((const uint8_t *&)basePolytetTable), basePolytetCompressedSize, polytetCount,
                 minOverlapDepth, minUnseenCompressedSubpolytet,
                 std::ref(hashTable), hashTableSize, std::ref(polytetTable), newPolytetsCompressedSize, polytetTableElementSize,
-                std::ref(newPolytetCount), std::ref(polytetChiralCount));
+                std::ref(newPolytetCount), polytetChiralCount);
         }
         for (THREAD_ID threadID=0; threadID < WORKER_THREADS; threadID++)
             workers[threadID].join();
 #else
+        polytetChiralCount = 0;
         enumerate(
             start, maximalTouchingSqrDistance,
             overlapCache, foundOverlaps,
