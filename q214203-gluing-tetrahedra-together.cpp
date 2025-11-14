@@ -271,16 +271,16 @@ public:
     bool operator()(const mpz_t maximalTouchingSqrDistance)
     {
         // Skip the longer overlap checking algorithm if the two tetrahedrons' centers are sufficiently separated.
-        // Get center of tetrahedron "a" by averaging its vertices' coordinates, without dividing by 4.
         for (int d=0; d<3; d++)
+        {
+            // Get center of tetrahedron "a" by averaging its vertices' coordinates, without dividing by 4.
             mpz_set(center[d], a->t.t[0][d]);
-        for (int p=1; p<4; p++)
-            for (int d=0; d<3; d++)
+            for (int p=1; p<4; p++)
                 mpz_add(center[d], center[d], a->t.t[p][d]);
-        // Subtract center of tetrahedron "b" by averaging its vertices' coordinates, without dividing by 4.
-        for (int p=0; p<4; p++)
-            for (int d=0; d<3; d++)
+            // Subtract center of tetrahedron "b" by averaging its vertices' coordinates, without dividing by 4.
+            for (int p=0; p<4; p++)
                 mpz_sub(center[d], center[d], b->t.t[p][d]);
+        }
         // Compare the sum of the squares of the orthogonal distances against the threshold squared distance.
         dot(tmp[0], center, center);
         if (mpz_cmp(tmp[0], maximalTouchingSqrDistance) >= 0)
@@ -305,24 +305,20 @@ public:
                     if (faceNum==3)
                         continue;
                     const mpz_t *normalizedTetrahedron[4][3]; // first 3 points are the face, and the 4th point is for calculating the normal
-                    for (int i=0; i<4; i++)
-                        for (int d=0; d<3; d++)
-                            normalizedTetrahedron[i][d] = &b->t.t[tetrahedronFaces[faceNum][i]][d];
-                    // Center coordinates will be multiplied by 3 compared to original coordinates.
-                    // Get center of face by averaging its vertices' coordinates; the
-                    // division by 3 is implied by omitting the multiplication by 3.
-                    for (int d=0; d<3; d++)
-                        mpz_set(center[d], *(normalizedTetrahedron[0][d]));
-                    for (int p=1; p<3; p++)
-                        for (int d=0; d<3; d++)
-                            mpz_add(center[d], center[d], *(normalizedTetrahedron[p][d]));
                     for (int d=0; d<3; d++)
                     {
+                        for (int i=0; i<4; i++)
+                            normalizedTetrahedron[i][d] = &b->t.t[tetrahedronFaces[faceNum][i]][d];
+                        // Center coordinates will be multiplied by 3 compared to original coordinates.
+                        // Get center of face by averaging its vertices' coordinates; the
+                        // division by 3 is implied by omitting the multiplication by 3.
+                        mpz_set(center[d], *(normalizedTetrahedron[0][d]));
+                        for (int p=1; p<3; p++)
+                            mpz_add(center[d], center[d], *(normalizedTetrahedron[p][d]));
+
                         mpz_neg(normal[d], center[d]);
                         mpz_addmul_ui(normal[d], *(normalizedTetrahedron[3][d]), 3);
-                    }
-                    for (int d=0; d<3; d++)
-                    {
+
                         mpz_sub(tmp [d], *(normalizedTetrahedron[0][d]), p0[d]);
                         mpz_sub(p0p1[d],                         p1[d],  p0[d]);
                     }
@@ -338,18 +334,14 @@ public:
                     }
                     if (mpz_cmp_ui(intersectNumerator, 0) <= 0 || mpz_cmp(intersectNumerator, intersectDenominator) >= 0)
                         continue;
-                    // These coordinates are all multiplied by intersectDenominator
                     for (int d=0; d<3; d++)
                     {
+                        // These coordinates are all multiplied by intersectDenominator
                         mpz_mul(intersectionPoint[d], p0[d], intersectDenominator);
                         mpz_addmul(intersectionPoint[d], p0p1[d], intersectNumerator);
-                    }
-                    for (int i=0; i<3; i++)
-                        for (int d=0; d<3; d++)
+                        for (int i=0; i<3; i++)
                             mpz_mul(triangle[i][d], *(normalizedTetrahedron[i][d]), intersectDenominator);
-                    // Check if the intersection point is inside the triangle
-                    for (int d=0; d<3; d++)
-                    {
+                        // Check if the intersection point is inside the triangle
                         mpz_sub(delta[d], intersectionPoint[d], triangle[0][d]);
                         mpz_sub(edge1[d], triangle[1][d]      , triangle[0][d]);
                         mpz_sub(edge2[d], triangle[2][d]      , triangle[0][d]);
