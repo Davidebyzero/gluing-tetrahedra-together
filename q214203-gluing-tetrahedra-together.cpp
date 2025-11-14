@@ -1007,6 +1007,59 @@ void enumerate(
                         }
                     }
                     // No overlap found, so add runningLeastPolytet[0] to hash table and chiral count
+#if defined(USE_GMP) && defined(PRINT_POLYTETS)
+                    {
+                        boost::mutex::scoped_lock lock(printPolytetMutex);
+                        printPolytet(polytet);
+                    }
+#endif
+                    {
+#ifdef MULTITHREADING
+                        boost::mutex::scoped_lock lock(hashTableMutex[shard]);
+                        if (*index != 0)
+                        {
+                            for (;;)
+                            {
+                                void *entry = (uint8_t*)polytetTable + (size_t)(*index - 1) * polytetTableElementSize;
+                                if (memcmp(entry, &runningLeastPolytet[0], newPolytetsCompressedSize) == 0)
+                                    goto skipDuplicate;
+                                index = (HashIndex*)((uint8_t*)entry + newPolytetsCompressedSize);
+                                if (*index == 0)
+                                    break; // no duplicate of runningLeastPolytet[0] was found in hash table
+                            }
+                        }
+                        size_t newPolytetCountFetched = __atomic_fetch_add(&newPolytetCount, 1, __ATOMIC_RELAXED);
+                        void *entry = (uint8_t*)polytetTable + newPolytetCountFetched * polytetTableElementSize;
+                        polytetChiralCount[threadID] += isChiral;
+#else
+                        void *entry = (uint8_t*)polytetTable + newPolytetCount        * polytetTableElementSize;
+                        polytetChiralCount           += isChiral;
+#endif
+                        if ((uint8_t*)entry + polytetTableElementSize - (uint8_t*)pool > poolSize)
+                        {
+#ifdef MULTITHREADING
+                            quitMemory();
+#else
+                            void *newPool = realloc(pool, poolSize += poolSize * MEMORY_POOL_GROW_RATIO);
+                            if (!newPool) {free(pool); quitMemory();}
+                            ptrdiff_t diff = (uint8_t*)newPool - (uint8_t*)pool;
+                            pool = newPool;
+                            (const uint8_t*&)basePolytetTable += diff;
+                            (const uint8_t*&)hashTable        += diff;
+                            (const uint8_t*&)polytetTable     += diff;
+                            (const uint8_t*&)index            += diff;
+                            (const uint8_t*&)entry            += diff;
+#endif
+                        }
+                        memcpy(entry, &runningLeastPolytet[0], newPolytetsCompressedSize);
+#ifdef MULTITHREADING
+                        *index = newPolytetCountFetched + 1;
+#else
+                        *index = ++newPolytetCount;
+#endif
+                        // No need to actually do the following, thanks to the "memset(polytetTable, 0, memoryUsagePolytetTable)"
+                        //*(HashIndex*)((uint8_t*)entry + newPolytetsCompressedSize) = 0; // pointer to next hash collision
+                    }
                     {
                         const auto sorter = [](const void *a, const void *b) -> int {return *(CompressedPolytetBits*)a - *(CompressedPolytetBits*)b;};
                         qsort(newRotatedPolytetList    , newRotatedPolytetCount    , sizeof(CompressedPolytetBits), sorter);
@@ -1061,59 +1114,6 @@ void enumerate(
                             printf("0x%llX\n", runningLeastPolytet[0]);
                             printPolytet(polytet);
                         }
-                    }
-#if defined(USE_GMP) && defined(PRINT_POLYTETS)
-                    {
-                        boost::mutex::scoped_lock lock(printPolytetMutex);
-                        printPolytet(polytet);
-                    }
-#endif
-                    {
-#ifdef MULTITHREADING
-                        boost::mutex::scoped_lock lock(hashTableMutex[shard]);
-                        if (*index != 0)
-                        {
-                            for (;;)
-                            {
-                                void *entry = (uint8_t*)polytetTable + (size_t)(*index - 1) * polytetTableElementSize;
-                                if (memcmp(entry, &runningLeastPolytet[0], newPolytetsCompressedSize) == 0)
-                                    goto skipDuplicate;
-                                index = (HashIndex*)((uint8_t*)entry + newPolytetsCompressedSize);
-                                if (*index == 0)
-                                    break; // no duplicate of runningLeastPolytet[0] was found in hash table
-                            }
-                        }
-                        size_t newPolytetCountFetched = __atomic_fetch_add(&newPolytetCount, 1, __ATOMIC_RELAXED);
-                        void *entry = (uint8_t*)polytetTable + newPolytetCountFetched * polytetTableElementSize;
-                        polytetChiralCount[threadID] += isChiral;
-#else
-                        void *entry = (uint8_t*)polytetTable + newPolytetCount        * polytetTableElementSize;
-                        polytetChiralCount           += isChiral;
-#endif
-                        if ((uint8_t*)entry + polytetTableElementSize - (uint8_t*)pool > poolSize)
-                        {
-#ifdef MULTITHREADING
-                            quitMemory();
-#else
-                            void *newPool = realloc(pool, poolSize += poolSize * MEMORY_POOL_GROW_RATIO);
-                            if (!newPool) {free(pool); quitMemory();}
-                            ptrdiff_t diff = (uint8_t*)newPool - (uint8_t*)pool;
-                            pool = newPool;
-                            (const uint8_t*&)basePolytetTable += diff;
-                            (const uint8_t*&)hashTable        += diff;
-                            (const uint8_t*&)polytetTable     += diff;
-                            (const uint8_t*&)index            += diff;
-                            (const uint8_t*&)entry            += diff;
-#endif
-                        }
-                        memcpy(entry, &runningLeastPolytet[0], newPolytetsCompressedSize);
-#ifdef MULTITHREADING
-                        *index = newPolytetCountFetched + 1;
-#else
-                        *index = ++newPolytetCount;
-#endif
-                        // No need to actually do the following, thanks to the "memset(polytetTable, 0, memoryUsagePolytetTable)"
-                        //*(HashIndex*)((uint8_t*)entry + newPolytetsCompressedSize) = 0; // pointer to next hash collision
                     }
                 skipDuplicate:
                 skipDueToOverlap:
