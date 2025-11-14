@@ -645,18 +645,30 @@ void Tet::tagSkipOverlapCheck(Polytet &polytet, int depth)
 }
 
 #ifdef USE_GMP
+mpz_t printCenter[3], printTmp[3];
 void printPolytet(Polytet &polytet)
 {
     bool first = true;
+    for (int d=0; d<3; d++)
+        mpz_set_ui(printCenter[d], 0);
+    for (int i=0; i<polytet.size(); i++)
+        for (int p=0; p<4; p++)
+            for (int d=0; d<3; d++)
+                mpz_add(printCenter[d], printCenter[d], polytet[i].t.t[p][d]);
+    for (int d=0; d<3; d++)
+        mpz_div_ui(printCenter[d], printCenter[d], polytet.size() * 4);
     for (int i=0; i<polytet.size(); i++)
     {
         printf(first ? "{" : ",\n");
         first = false;
-        gmp_printf("{{%Zd, %Zd, %Zd}, {%Zd, %Zd, %Zd}, {%Zd, %Zd, %Zd}, {%Zd, %Zd, %Zd}}",
-            polytet[i].t.t[0][0], polytet[i].t.t[0][1], polytet[i].t.t[0][2],
-            polytet[i].t.t[1][0], polytet[i].t.t[1][1], polytet[i].t.t[1][2],
-            polytet[i].t.t[2][0], polytet[i].t.t[2][1], polytet[i].t.t[2][2],
-            polytet[i].t.t[3][0], polytet[i].t.t[3][1], polytet[i].t.t[3][2]);
+        putchar('{');
+        for (int p=0; p<4; p++)
+        {
+            for (int d=0; d<3; d++)
+                mpz_sub(printTmp[d], polytet[i].t.t[p][d], printCenter[d]);
+            gmp_printf("%s{%Zd, %Zd, %Zd}", p ? ", " : "", printTmp[0], printTmp[1], printTmp[2]);
+        }
+        putchar('}');
     }
     printf("}\n\n");
 }
@@ -1156,6 +1168,8 @@ int main(int argc, char *argv[])
     mpz_t      maximalTouchingSqrDistance;
     mpz_init  (maximalTouchingSqrDistance);
     mpz_set_ui(maximalTouchingSqrDistance, MAXIMAL_TOUCHING_SQR_DISTANCE);
+    for (int d=0; d<3; d++)
+        mpz_inits(printCenter[d], printTmp[d], NULL);
 #else
     static Tetrahedron start =
     {{
@@ -1384,6 +1398,8 @@ errorQuit:
     free(overlapCache);
 #ifdef USE_GMP
     mpz_clear(maximalTouchingSqrDistance);
+    for (int d=0; d<3; d++)
+        mpz_clears(printCenter[d], printTmp[d], NULL);
 #endif
     return 0;
 }
