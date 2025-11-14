@@ -742,6 +742,7 @@ void mul_start_3(Tetrahedron &start, Coord &maximalTouchingSqrDistance, Compress
 #ifdef MULTITHREADING
     static boost::mutex hashTableMutex[HASH_TABLE_SHARDS]; // shard the hash table locking
     static boost::mutex workAssignmentMutex;
+    static boost::mutex printPolytetMutex;
     static bool hashTableInUse = false;
 
     struct WorkerJob
@@ -1040,27 +1041,32 @@ void enumerate(
                         if (symmetry3List[symmetry3Count] > 1)
                             symmetry3Count++;
 
-                        printf("{");
-                        for (int i=0; i<symmetryCount; i++)
-                            printf("%s%d", i?", ":"", symmetryList[i]);
-                        for (int i=0; i<symmetry3Count; i++)
-                            printf("%s%d(3)", i || symmetryCount ? ", " : "", symmetry3List[i]);
-                        if (!isChiral)
-                            printf("%smirror", symmetryCount || symmetry3Count ? ", " : "");
-                        printf("}\n");
-
-                        /*for (int i=0; i<newRotatedPolytetCount; i++)
-                            printf("%s%llX", i?", ":"", newRotatedPolytetList[i]);
-                        putchar('\n');*/
-
-                        if (symmetryCount || symmetry3Count)
+                        if (!isChiral || symmetryCount || symmetry3Count)
                         {
+                            boost::mutex::scoped_lock lock(printPolytetMutex);
+
+                            printf("<");
+                            for (int i=0; i<symmetryCount; i++)
+                                printf("%s%d", i?", ":"", symmetryList[i]);
+                            for (int i=0; i<symmetry3Count; i++)
+                                printf("%s%d(3)", i || symmetryCount ? ", " : "", symmetry3List[i]);
+                            if (!isChiral)
+                                printf("%smirror", symmetryCount || symmetry3Count ? ", " : "");
+                            printf(">\n");
+
+                            /*for (int i=0; i<newRotatedPolytetCount; i++)
+                                printf("%s%llX", i?", ":"", newRotatedPolytetList[i]);
+                            putchar('\n');*/
+
                             printf("0x%llX\n", runningLeastPolytet[0]);
                             printPolytet(polytet);
                         }
                     }
 #if defined(USE_GMP) && defined(PRINT_POLYTETS)
-                    printPolytet(polytet);
+                    {
+                        boost::mutex::scoped_lock lock(printPolytetMutex);
+                        printPolytet(polytet);
+                    }
 #endif
                     {
 #ifdef MULTITHREADING
@@ -1274,6 +1280,7 @@ int main(int argc, char *argv[])
         if (memoryUsage)
             std::cout << ", " << memoryUsage << " bytes";
         std::cout << "]" << std::endl;
+        for (int i=0; i<120; i++) putchar('-'); putchar('\n');
         if (prevPolytetCount > polytetCount)
         {
             std::cerr << "Quit due to apparent overflow" << std::endl;
