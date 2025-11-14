@@ -1275,6 +1275,19 @@ int main(int argc, char *argv[])
 #endif
     for (;;)
     {
+        if (tetCount < 3)
+        {
+            if (tetCount == 1)
+                printf("<4(3), mirror>\n"
+                    "-\n"
+                    "{{{-1, -1, -1}, {-1, 1, 1}, {1, -1, 1}, {1, 1, -1}}}\n\n");
+            else // tetCount == 2
+                printf("<2(3), mirror>\n"
+                    "0x0\n"
+                    "{{{-4, -4, -4}, {-4, 2, 2}, {2, -4, 2}, {2, 2, -4}},\n"
+                    "{{4, 4, 4}, {-4, 2, 2}, {2, 2, -4}, {2, -4, 2}}}\n\n");
+        }
+
         auto currentTime = std::chrono::steady_clock::now();
         std::cout << tetCount << ": ";
         if (resumedFromFile)
