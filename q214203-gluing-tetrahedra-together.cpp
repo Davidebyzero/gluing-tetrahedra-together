@@ -1,6 +1,7 @@
 // See https://codegolf.stackexchange.com/a/283991/17216 and https://oeis.org/A276272
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <fcntl.h>
 #include <iostream>
 #include <string.h>
@@ -1186,8 +1187,7 @@ int main(int argc, char *argv[])
         size_t overlapCacheSize = 0;
         for (int i=0; i<MAXIMUM_TETCOUNT-2; i++)
             overlapCacheSize = overlapCacheSize * 3 + 1;
-        overlapCache = (bool*)malloc(overlapCacheSize);
-        memset(overlapCache, 0, overlapCacheSize);
+        overlapCache = (bool*)calloc(overlapCacheSize, 1);
         std::cout << "Allocated " << overlapCacheSize << " bytes for overlap caching" << std::endl;
     }
 
