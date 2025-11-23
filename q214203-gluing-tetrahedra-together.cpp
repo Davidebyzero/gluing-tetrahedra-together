@@ -44,9 +44,11 @@ typedef uint32_t HashIndex;
 
 #if MAXIMUM_TETCOUNT > 23
 typedef unsigned __int128 CompressedPolytetBits; // Can handle up to 44 terms, while a 64-bit size_t can only handle up to about 28 terms
+typedef   signed __int128 CompressedPolytetBitsSigned;
 #define COMPRESSEDPOLYTETBITS_MAX (unsigned __int128)-1
 #else
 typedef uint64_t          CompressedPolytetBits; // Can handle up to 23 terms
+typedef  int64_t          CompressedPolytetBitsSigned;
 #define COMPRESSEDPOLYTETBITS_MAX UINT64_MAX
 #endif
 
@@ -787,6 +789,11 @@ void mul_start_3(Tetrahedron &start, Coord &maximalTouchingSqrDistance, Compress
     #define LOCAL_STORAGE(member) member
 #endif
 
+template <typename T> int sign(T x)
+{
+    return (T(0) < x) - (x < T(0));
+}
+
 void enumerate(
 #ifdef MULTITHREADING
     THREAD_ID threadID,
@@ -1123,26 +1130,33 @@ void enumerate(
                         *(HashIndex*)((uint8_t*)entry + newPolytetsCompressedSize) = 0; // pointer to next hash collision
                     }
                     {
-                        const auto sorter = [](const void *a, const void *b) -> int {return ((SymmetryRoot*)a)->value - ((SymmetryRoot*)b)->value;};
+                        const auto sorter = [](const void *a, const void *b) -> int
+                        {
+                            return sign((CompressedPolytetBitsSigned)((SymmetryRoot*)a)->value -
+                                        (CompressedPolytetBitsSigned)((SymmetryRoot*)b)->value);
+                        };
                         qsort(newRotatedPolytetList    , newRotatedPolytetCount    , sizeof(SymmetryRoot), sorter);
                         qsort(newRotatedPolytetSym3List, newRotatedPolytetSym3Count, sizeof(SymmetryRoot), sorter);
 
-                        int symmetryCount = 0; symmetryList[0] = 1;
+                        int symmetryCount = 0; symmetryList[0] = newRotatedPolytetCount ? 1 : 0;
+                        bool symmetryIncludesNonUnity = false;
                         for (int i=0; i<newRotatedPolytetCount-1; i++)
                         {
                             if (newRotatedPolytetList[i].value == newRotatedPolytetList[i+1].value)
+                            {
                                 symmetryList[symmetryCount]++;
+                                symmetryIncludesNonUnity = true;
+                            }
                             else
                             {
-                                if (symmetryList[symmetryCount] > 1)
-                                    symmetryCount++;
-                                symmetryList[symmetryCount] = 1;
+                                symmetryCount++;
+                                symmetryList[symmetryCount] = i<newRotatedPolytetCount-1 ? 1 : 0;
                             }
                         }
-                        if (symmetryList[symmetryCount] > 1)
+                        if (symmetryList[symmetryCount])
                             symmetryCount++;
 
-                        int symmetry3Count = 0; symmetry3List[0] = 1;
+                        int symmetry3Count = 0; symmetry3List[0] = newRotatedPolytetSym3Count ? 1 : 0;
                         for (int i=0; i<newRotatedPolytetSym3Count-1; i++)
                         {
                             if (newRotatedPolytetSym3List[i].value == newRotatedPolytetSym3List[i+1].value)
@@ -1150,13 +1164,13 @@ void enumerate(
                             else
                             {
                                 symmetry3Count++;
-                                symmetry3List[symmetry3Count] = 1;
+                                symmetry3List[symmetry3Count] = i<newRotatedPolytetSym3Count-1 ? 1 : 0;
                             }
                         }
-                        if (symmetry3List[symmetry3Count] > 1)
+                        if (symmetry3List[symmetry3Count])
                             symmetry3Count++;
 
-                        if (!isChiral || symmetryCount || symmetry3Count)
+                        if (!isChiral || symmetryIncludesNonUnity || symmetry3Count)
                         {
                             boost::mutex::scoped_lock lock(printPolytetMutex);
 
@@ -1172,7 +1186,11 @@ void enumerate(
 
                             /*for (int i=0; i<newRotatedPolytetCount; i++)
                                 printf("%s%llX", i?", ":"", newRotatedPolytetList[i].value);
-                            putchar('\n');*/
+                            putchar('\n');
+                            for (int i=0; i<newRotatedPolytetSym3Count; i++)
+                                printf("%s%llX", i?", ":"", newRotatedPolytetSym3List[i].value);
+                            if (newRotatedPolytetSym3Count)
+                                putchar('\n');*/
 
                             printf("0x%llX\n", runningLeastPolytet[0].value);
                             printPolytet(polytet);
