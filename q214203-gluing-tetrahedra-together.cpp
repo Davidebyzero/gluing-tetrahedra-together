@@ -1138,6 +1138,8 @@ void enumerate(
                         qsort(newRotatedPolytetList    , newRotatedPolytetCount    , sizeof(SymmetryRoot), sorter);
                         qsort(newRotatedPolytetSym3List, newRotatedPolytetSym3Count, sizeof(SymmetryRoot), sorter);
 
+                        int symmetry = 0;
+
                         int symmetryCount = 0; symmetryList[0] = newRotatedPolytetCount ? 1 : 0;
                         bool symmetryIncludesNonUnity = false;
                         for (int i=0; i<newRotatedPolytetCount-1; i++)
@@ -1149,12 +1151,24 @@ void enumerate(
                             }
                             else
                             {
+                                if (!symmetry)
+                                    symmetry = symmetryList[symmetryCount];
+                                else
+                                if (symmetry != symmetryList[symmetryCount])
+                                    printf("WARNING! Nonmatching symmetry found\n");
                                 symmetryCount++;
                                 symmetryList[symmetryCount] = i<newRotatedPolytetCount-1 ? 1 : 0;
                             }
                         }
                         if (symmetryList[symmetryCount])
+                        {
+                            if (!symmetry)
+                                symmetry = symmetryList[symmetryCount];
+                            else
+                            if (symmetry != symmetryList[symmetryCount])
+                                printf("WARNING! Nonmatching symmetry found\n");
                             symmetryCount++;
+                        }
 
                         int symmetry3Count = 0; symmetry3List[0] = newRotatedPolytetSym3Count ? 1 : 0;
                         for (int i=0; i<newRotatedPolytetSym3Count-1; i++)
@@ -1163,23 +1177,36 @@ void enumerate(
                                 symmetry3List[symmetry3Count]++;
                             else
                             {
+                                if (!symmetry)
+                                    symmetry = symmetry3List[symmetry3Count] * 3;
+                                else
+                                if (symmetry != symmetry3List[symmetry3Count] * 3)
+                                    printf("WARNING! Nonmatching symmetry found\n");
                                 symmetry3Count++;
                                 symmetry3List[symmetry3Count] = i<newRotatedPolytetSym3Count-1 ? 1 : 0;
                             }
                         }
                         if (symmetry3List[symmetry3Count])
+                        {
+                            if (!symmetry)
+                                symmetry = symmetry3List[symmetry3Count] * 3;
+                            else
+                            if (symmetry != symmetry3List[symmetry3Count] * 3)
+                                printf("WARNING! Nonmatching symmetry found\n");
                             symmetry3Count++;
+                        }
 
                         if (!isChiral || symmetryIncludesNonUnity || symmetry3Count)
                         {
                             boost::mutex::scoped_lock lock(printPolytetMutex);
 
 #if 1
-                            printf("<");
+                            printf("<%d", symmetry);
+                            /*printf("<");
                             for (int i=0; i<symmetryCount; i++)
                                 printf("%s%d", i?", ":"", symmetryList[i]);
                             for (int i=0; i<symmetry3Count; i++)
-                                printf("%s%d(3)", i || symmetryCount ? ", " : "", symmetry3List[i]);
+                                printf("%s%d(3)", i || symmetryCount ? ", " : "", symmetry3List[i]);*/
                             if (!isChiral)
                                 printf("%s%s", symmetryCount || symmetry3Count ? ", " : "", isMirror ? "mirror" : "achiral");
                             printf(">\n");
@@ -1347,11 +1374,11 @@ int main(int argc, char *argv[])
         if (tetCount < 3)
         {
             if (tetCount == 1)
-                printf("<4(3), mirror>\n"
+                printf("<12, mirror>\n"
                     "-\n"
                     "{{{-1, -1, -1}, {-1, 1, 1}, {1, -1, 1}, {1, 1, -1}}}\n\n");
             else // tetCount == 2
-                printf("<2(3), mirror>\n"
+                printf("<6, mirror>\n"
                     "0x0\n"
                     "{{{-4, -4, -4}, {-4, 2, 2}, {2, -4, 2}, {2, 2, -4}},\n"
                     "{{4, 4, 4}, {-4, 2, 2}, {2, 2, -4}, {2, -4, 2}}}\n\n");
