@@ -1,7 +1,6 @@
 // See https://codegolf.stackexchange.com/a/283991/17216 and https://oeis.org/A276272
 
 #include <stdio.h>
-#include <stdlib.h>
 #include <fcntl.h>
 #include <iostream>
 #include <string.h>
@@ -645,6 +644,22 @@ void Tet::tagSkipOverlapCheck(Polytet &polytet, int depth)
     t->tagSkipOverlapCheckHelper(polytet, depth, &rotationTable[attachedFace]);
 }
 
+CompressedSubpolytet reflectCompressedPath(CompressedSubpolytet compressedPath)
+{
+    CompressedSubpolytet compressedPathReflected = 0, trit = 1;
+    while (compressedPath)
+    {
+        compressedPath--;
+        unsigned next = compressedPath % 3;
+        if (next < 2)
+            next ^= 1;
+        compressedPathReflected += (next + 1) * trit;
+        compressedPath /= 3;
+        trit *= 3;
+    }
+    return compressedPathReflected;
+}
+
 #ifdef USE_GMP
 mpz_t printCenter[3], printTmp[3];
 void printPolytet(Polytet &polytet)
@@ -831,8 +846,15 @@ void enumerate(
 
     CompressedPolytet newRotatedPolytet(polytet);
 
-    CompressedPolytetBits newRotatedPolytetList    [MAXIMUM_TETCOUNT * 3];
-    CompressedPolytetBits newRotatedPolytetSym3List[MAXIMUM_TETCOUNT / 3];
+    struct SymmetryRoot
+    {
+        CompressedPolytetBits value;
+        TetIndex tetI;
+        uint8_t rotation;
+    };
+
+    SymmetryRoot newRotatedPolytetList    [MAXIMUM_TETCOUNT * 3];
+    SymmetryRoot newRotatedPolytetSym3List[MAXIMUM_TETCOUNT / 3];
     int8_t symmetryList [MAXIMUM_TETCOUNT * 3 / 2 + 1];
     int8_t symmetry3List[MAXIMUM_TETCOUNT / 3     + 1];
 
@@ -880,7 +902,8 @@ void enumerate(
                         continue;
                     attachNewTet(polytet, tetCount - 1, tetNumToAttachTo, faceNum);
                     // Canonicalize the rotation of this new polytet in compressed form, so that it can be compared against others
-                    CompressedPolytetBits runningLeastPolytet[2] = {COMPRESSEDPOLYTETBITS_MAX, COMPRESSEDPOLYTETBITS_MAX};
+                    SymmetryRoot runningLeastPolytet[2];
+                    runningLeastPolytet[1].value = runningLeastPolytet[0].value = COMPRESSEDPOLYTETBITS_MAX;
                     int newRotatedPolytetCount     = 0;
                     int newRotatedPolytetSym3Count = 0;
 
@@ -936,28 +959,68 @@ void enumerate(
                                 if (!reflect)
                                 {
                                     if (newRotatedPolytetCount && rotationStep == 2 && rotationStepRange[0] != rotationStepRange[1] &&
-                                        newRotatedPolytetList[newRotatedPolytetCount - 1] == newRotatedPolytet.value)
+                                        newRotatedPolytetList[newRotatedPolytetCount - 1].value == newRotatedPolytet.value)
                                     {
                                         newRotatedPolytetCount -= 2;
-                                        newRotatedPolytetSym3List[newRotatedPolytetSym3Count++] = newRotatedPolytet.value;
+                                        newRotatedPolytetSym3List[newRotatedPolytetSym3Count].value = newRotatedPolytet.value;
+                                        newRotatedPolytetSym3List[newRotatedPolytetSym3Count].tetI = i;
+                                        newRotatedPolytetSym3List[newRotatedPolytetSym3Count].rotation = rotationStep;
+                                        newRotatedPolytetSym3Count++;
                                     }
                                     else
-                                        newRotatedPolytetList[newRotatedPolytetCount++] = newRotatedPolytet.value;
+                                    {
+                                        newRotatedPolytetList[newRotatedPolytetCount].value = newRotatedPolytet.value;
+                                        newRotatedPolytetList[newRotatedPolytetCount].tetI = i;
+                                        newRotatedPolytetList[newRotatedPolytetCount].rotation = rotationStep;
+                                        newRotatedPolytetCount++;
+                                    }
                                 }
 
                                 // Update the running "least" rotation
-                                if (newRotatedPolytet.value < runningLeastPolytet[reflect])
-                                    runningLeastPolytet[reflect] = newRotatedPolytet.value;
+                                if (runningLeastPolytet[reflect].value > newRotatedPolytet.value)
+                                {
+                                    runningLeastPolytet[reflect].value = newRotatedPolytet.value;
+                                    runningLeastPolytet[reflect].tetI = i;
+                                    runningLeastPolytet[reflect].rotation = rotationStep;
+                                }
                             }
                         }
                     skipThisTet:;
                     }
 
-                    bool isChiral = runningLeastPolytet[1] != runningLeastPolytet[0];
-                    if (isChiral && runningLeastPolytet[1] <  runningLeastPolytet[0])
-                        runningLeastPolytet[0] = runningLeastPolytet[1];
+                    bool isChiral = runningLeastPolytet[1].value != runningLeastPolytet[0].value;
+                    bool isMirror; // only meaningful if "isChiral" is false
+                    if (!isChiral)
+                    {
+                        if (runningLeastPolytet[0].tetI == runningLeastPolytet[1].tetI)
+                            isMirror = true;
+                        else
+                        {
+                            auto checkMirror = [&](TetIndex tetI) -> bool
+                            {
+                                polytet[                       tetI].tagSkipOverlapCheck(polytet, 1);
+                                CompressedSubpolytet path0to1 =                       (polytet[runningLeastPolytet[1].tetI].compressedPath - 1) / 3;
+                                polytet[runningLeastPolytet[1].tetI].tagSkipOverlapCheck(polytet, 1);
+                                CompressedSubpolytet path1to0 = reflectCompressedPath((polytet[                       tetI].compressedPath - 1) / 3);
+                                return path1to0 == path0to1;
+                            };
+                            for (int i=0; i<newRotatedPolytetCount; i++)
+                                if (newRotatedPolytetList[i].value == runningLeastPolytet[0].value)
+                                    if (isMirror = checkMirror(newRotatedPolytetList[i].tetI); isMirror)
+                                        goto foundIsMirror;
+                            for (int i=0; i<newRotatedPolytetSym3Count; i++)
+                                if (newRotatedPolytetSym3List[i].value == runningLeastPolytet[0].value)
+                                    if (isMirror = checkMirror(newRotatedPolytetSym3List[i].tetI); isMirror)
+                                        goto foundIsMirror;
+                            isMirror = false;
+                        foundIsMirror:;
+                        }
+                    }
+                    else
+                    if (runningLeastPolytet[0].value > runningLeastPolytet[1].value)
+                        runningLeastPolytet[0].value = runningLeastPolytet[1].value;
 
-                    size_t hashIndex = hash(runningLeastPolytet[0]) % hashTableSize;
+                    size_t hashIndex = hash(runningLeastPolytet[0].value) % hashTableSize;
                     HashIndex *index = &hashTable[hashIndex];
 #ifdef MULTITHREADING
                     int shard = hashIndex % HASH_TABLE_SHARDS;
@@ -969,9 +1032,9 @@ void enumerate(
                         for (;;)
                         {
                             if (*index == 0)
-                                break; // no duplicate of runningLeastPolytet[0] was found in hash table
+                                break; // no duplicate of runningLeastPolytet[0].value was found in hash table
                             void *entry = (uint8_t*)polytetTable + (size_t)(*index - 1) * polytetTableElementSize;
-                            if (memcmp(entry, &runningLeastPolytet[0], newPolytetsCompressedSize) == 0)
+                            if (memcmp(entry, &runningLeastPolytet[0].value, newPolytetsCompressedSize) == 0)
                                 goto skipDuplicate;
                             index = (HashIndex*)((uint8_t*)entry + newPolytetsCompressedSize);
                         }
@@ -991,21 +1054,8 @@ void enumerate(
                             overlap.setB(polytet[tetCheckIntersectionI]);
                             if (overlap(maximalTouchingSqrDistance))
                             {
-                                overlapCache[compressedPath - 1] = true;
-
-                                CompressedSubpolytet compressedPathReflected = 0, trit = 1;
-                                while (compressedPath)
-                                {
-                                    compressedPath--;
-                                    unsigned next = compressedPath % 3;
-                                    if (next < 2)
-                                        next ^= 1;
-                                    compressedPathReflected += (next + 1) * trit;
-                                    compressedPath /= 3;
-                                    trit *= 3;
-                                }
-                                overlapCache[compressedPathReflected - 1] = true;
-
+                                overlapCache[                      compressedPath  - 1] = true;
+                                overlapCache[reflectCompressedPath(compressedPath) - 1] = true;
                                 foundOverlaps = true;
                                 goto skipDueToOverlap;
                             }
@@ -1019,7 +1069,7 @@ void enumerate(
                             }
                         }
                     }
-                    // No overlap found, so add runningLeastPolytet[0] to hash table and chiral count
+                    // No overlap found, so add runningLeastPolytet[0].value to hash table and chiral count
 #if defined(USE_GMP) && defined(PRINT_POLYTETS)
                     {
                         boost::mutex::scoped_lock lock(printPolytetMutex);
@@ -1034,11 +1084,11 @@ void enumerate(
                             for (;;)
                             {
                                 void *entry = (uint8_t*)polytetTable + (size_t)(*index - 1) * polytetTableElementSize;
-                                if (memcmp(entry, &runningLeastPolytet[0], newPolytetsCompressedSize) == 0)
+                                if (memcmp(entry, &runningLeastPolytet[0].value, newPolytetsCompressedSize) == 0)
                                     goto skipDuplicate;
                                 index = (HashIndex*)((uint8_t*)entry + newPolytetsCompressedSize);
                                 if (*index == 0)
-                                    break; // no duplicate of runningLeastPolytet[0] was found in hash table
+                                    break; // no duplicate of runningLeastPolytet[0].value was found in hash table
                             }
                         }
                         size_t newPolytetCountFetched = __atomic_fetch_add(&newPolytetCount, 1, __ATOMIC_RELAXED);
@@ -1064,7 +1114,7 @@ void enumerate(
                             (const uint8_t*&)entry            += diff;
 #endif
                         }
-                        memcpy(entry, &runningLeastPolytet[0], newPolytetsCompressedSize);
+                        memcpy(entry, &runningLeastPolytet[0].value, newPolytetsCompressedSize);
 #ifdef MULTITHREADING
                         *index = newPolytetCountFetched + 1;
 #else
@@ -1073,14 +1123,14 @@ void enumerate(
                         *(HashIndex*)((uint8_t*)entry + newPolytetsCompressedSize) = 0; // pointer to next hash collision
                     }
                     {
-                        const auto sorter = [](const void *a, const void *b) -> int {return *(CompressedPolytetBits*)a - *(CompressedPolytetBits*)b;};
-                        qsort(newRotatedPolytetList    , newRotatedPolytetCount    , sizeof(CompressedPolytetBits), sorter);
-                        qsort(newRotatedPolytetSym3List, newRotatedPolytetSym3Count, sizeof(CompressedPolytetBits), sorter);
+                        const auto sorter = [](const void *a, const void *b) -> int {return ((SymmetryRoot*)a)->value - ((SymmetryRoot*)b)->value;};
+                        qsort(newRotatedPolytetList    , newRotatedPolytetCount    , sizeof(SymmetryRoot), sorter);
+                        qsort(newRotatedPolytetSym3List, newRotatedPolytetSym3Count, sizeof(SymmetryRoot), sorter);
 
                         int symmetryCount = 0; symmetryList[0] = 1;
                         for (int i=0; i<newRotatedPolytetCount-1; i++)
                         {
-                            if (newRotatedPolytetList[i] == newRotatedPolytetList[i+1])
+                            if (newRotatedPolytetList[i].value == newRotatedPolytetList[i+1].value)
                                 symmetryList[symmetryCount]++;
                             else
                             {
@@ -1095,7 +1145,7 @@ void enumerate(
                         int symmetry3Count = 0; symmetry3List[0] = 1;
                         for (int i=0; i<newRotatedPolytetSym3Count-1; i++)
                         {
-                            if (newRotatedPolytetSym3List[i] == newRotatedPolytetSym3List[i+1])
+                            if (newRotatedPolytetSym3List[i].value == newRotatedPolytetSym3List[i+1].value)
                                 symmetry3List[symmetry3Count]++;
                             else
                             {
@@ -1110,21 +1160,23 @@ void enumerate(
                         {
                             boost::mutex::scoped_lock lock(printPolytetMutex);
 
+#if 1
                             printf("<");
                             for (int i=0; i<symmetryCount; i++)
                                 printf("%s%d", i?", ":"", symmetryList[i]);
                             for (int i=0; i<symmetry3Count; i++)
                                 printf("%s%d(3)", i || symmetryCount ? ", " : "", symmetry3List[i]);
                             if (!isChiral)
-                                printf("%smirror", symmetryCount || symmetry3Count ? ", " : "");
+                                printf("%s%s", symmetryCount || symmetry3Count ? ", " : "", isMirror ? "mirror" : "achiral");
                             printf(">\n");
 
                             /*for (int i=0; i<newRotatedPolytetCount; i++)
-                                printf("%s%llX", i?", ":"", newRotatedPolytetList[i]);
+                                printf("%s%llX", i?", ":"", newRotatedPolytetList[i].value);
                             putchar('\n');*/
 
-                            printf("0x%llX\n", runningLeastPolytet[0]);
+                            printf("0x%llX\n", runningLeastPolytet[0].value);
                             printPolytet(polytet);
+#endif
                         }
                     }
                 skipDuplicate:
