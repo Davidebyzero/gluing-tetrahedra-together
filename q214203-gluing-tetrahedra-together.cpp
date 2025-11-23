@@ -794,6 +794,20 @@ template <typename T> int sign(T x)
     return (T(0) < x) - (x < T(0));
 }
 
+enum
+{
+    SymmetryType_Chiral,
+    SymmetryType_AchiralNonmirror,
+    SymmetryType_AchiralMirror,
+    SymmetryType_COUNT
+};
+static const char *const symmetryTypeString[SymmetryType_COUNT] =
+{
+    "",
+    ", achiral",
+    ", mirror",
+};
+
 void enumerate(
 #ifdef MULTITHREADING
     THREAD_ID threadID,
@@ -829,9 +843,15 @@ void enumerate(
 
     size_t &newPolytetCount,
 #ifdef MULTITHREADING
-    size_t *polytetChiralCount
+    size_t polytetChiralCount[WORKER_THREADS]
+#   ifdef PRINT_SYMMETRY_TOTALS
+    , size_t polytetSymmetryCount[WORKER_THREADS][MAXIMUM_TETCOUNT * 3][SymmetryType_COUNT]
+#   endif
 #else
     size_t &polytetChiralCount
+#   ifdef PRINT_SYMMETRY_TOTALS
+    , size_t polytetSymmetryCount                [MAXIMUM_TETCOUNT * 3][SymmetryType_COUNT]
+#   endif
 #endif
     )
 {
@@ -860,10 +880,12 @@ void enumerate(
         uint8_t rotation;
     };
 
+#if defined(PRINT_SYMMETRY_TOTALS) || defined(PRINT_POLYTETS_WITH_SYMMETRY)
     SymmetryRoot newRotatedPolytetList    [MAXIMUM_TETCOUNT * 3];
     SymmetryRoot newRotatedPolytetSym3List[MAXIMUM_TETCOUNT / 3];
     int8_t symmetryList [MAXIMUM_TETCOUNT * 3 / 2 + 1];
     int8_t symmetry3List[MAXIMUM_TETCOUNT / 3     + 1];
+#endif
 
 #ifdef MULTITHREADING
     for (;;)
@@ -963,6 +985,7 @@ void enumerate(
                                 newRotatedPolytet.reflect = reflect;
                                 newRotatedPolytet.append(*t, thisRotationTable, rotationStep);
 
+#if defined(PRINT_SYMMETRY_TOTALS) || defined(PRINT_POLYTETS_WITH_SYMMETRY)
                                 if (!reflect)
                                 {
                                     if (newRotatedPolytetCount && rotationStep == 2 && rotationStepRange[0] != rotationStepRange[1] &&
@@ -982,6 +1005,7 @@ void enumerate(
                                         newRotatedPolytetCount++;
                                     }
                                 }
+#endif
 
                                 // Update the running "least" rotation
                                 if (runningLeastPolytet[reflect].value > newRotatedPolytet.value)
@@ -996,9 +1020,12 @@ void enumerate(
                     }
 
                     bool isChiral = runningLeastPolytet[1].value != runningLeastPolytet[0].value;
+#if defined(PRINT_SYMMETRY_TOTALS) || defined(PRINT_POLYTETS_WITH_SYMMETRY)
                     bool isMirror; // only meaningful if "isChiral" is false
+#endif
                     if (!isChiral)
                     {
+#if defined(PRINT_SYMMETRY_TOTALS) || defined(PRINT_POLYTETS_WITH_SYMMETRY)
                         if (runningLeastPolytet[0].tetI == runningLeastPolytet[1].tetI)
                             isMirror = true;
                         else
@@ -1022,6 +1049,7 @@ void enumerate(
                             isMirror = false;
                         foundIsMirror:;
                         }
+#endif
                     }
                     else
                     if (runningLeastPolytet[0].value > runningLeastPolytet[1].value)
@@ -1077,7 +1105,7 @@ void enumerate(
                         }
                     }
                     // No overlap found, so add runningLeastPolytet[0].value to hash table and chiral count
-#if defined(USE_GMP) && defined(PRINT_POLYTETS)
+#if defined(USE_GMP) && defined(PRINT_POLYTETS) && !defined(PRINT_POLYTETS_WITH_SYMMETRY)
                     {
                         boost::mutex::scoped_lock lock(printPolytetMutex);
                         printPolytet(polytet);
@@ -1129,6 +1157,7 @@ void enumerate(
 #endif
                         *(HashIndex*)((uint8_t*)entry + newPolytetsCompressedSize) = 0; // pointer to next hash collision
                     }
+#if defined(PRINT_SYMMETRY_TOTALS) || defined(PRINT_POLYTETS_WITH_SYMMETRY)
                     {
                         const auto sorter = [](const void *a, const void *b) -> int
                         {
@@ -1196,11 +1225,21 @@ void enumerate(
                             symmetry3Count++;
                         }
 
+    #ifdef PRINT_SYMMETRY_TOTALS
+                        polytetSymmetryCount
+        #ifdef MULTITHREADING
+                            [threadID]
+        #endif
+                            [symmetry - 1]
+                            [isChiral ? SymmetryType_Chiral : isMirror ? SymmetryType_AchiralMirror : SymmetryType_AchiralNonmirror]++;
+    #endif
+    #ifdef PRINT_POLYTETS_WITH_SYMMETRY
+        #ifndef PRINT_POLYTETS
                         if (!isChiral || symmetryIncludesNonUnity || symmetry3Count)
+        #endif
                         {
                             boost::mutex::scoped_lock lock(printPolytetMutex);
 
-#if 1
                             printf("<%d", symmetry);
                             /*printf("<");
                             for (int i=0; i<symmetryCount; i++)
@@ -1221,9 +1260,10 @@ void enumerate(
 
                             printf("0x%llX\n", runningLeastPolytet[0].value);
                             printPolytet(polytet);
-#endif
                         }
+    #endif // PRINT_POLYTETS_WITH_SYMMETRY
                     }
+#endif // defined(PRINT_SYMMETRY_TOTALS) || defined(PRINT_POLYTETS_WITH_SYMMETRY)
                 skipDuplicate:
                 skipDueToOverlap:
 
@@ -1301,9 +1341,15 @@ int main(int argc, char *argv[])
     int tetCount=1;
     bool resumedFromFile = false;
 #ifdef MULTITHREADING
-    size_t polytetChiralCount[WORKER_THREADS];
+    size_t polytetChiralCount  [WORKER_THREADS];
+#   ifdef PRINT_SYMMETRY_TOTALS
+    size_t polytetSymmetryCount[WORKER_THREADS][MAXIMUM_TETCOUNT * 3][SymmetryType_COUNT];
+#   endif
 #else
     size_t polytetChiralCount;
+#   ifdef PRINT_SYMMETRY_TOTALS
+    size_t polytetSymmetryCount                [MAXIMUM_TETCOUNT * 3][SymmetryType_COUNT];
+#   endif
 #endif
 #ifdef RESUME_FROM_FILE
     {
@@ -1365,12 +1411,16 @@ int main(int argc, char *argv[])
 #ifdef MULTITHREADING
     std::thread workers[WORKER_THREADS];
 
-    memset(polytetChiralCount, 0, WORKER_THREADS * sizeof(*polytetChiralCount));
+    memset(polytetChiralCount, 0, sizeof(polytetChiralCount));
 #else
     polytetChiralCount = 0;
 #endif
+#ifdef PRINT_SYMMETRY_TOTALS
+    memset(polytetSymmetryCount, 0, sizeof(polytetSymmetryCount));
+#endif
     for (;;)
     {
+#ifdef PRINT_POLYTETS_WITH_SYMMETRY
         if (tetCount < 3)
         {
             if (tetCount == 1)
@@ -1383,6 +1433,7 @@ int main(int argc, char *argv[])
                     "{{{-4, -4, -4}, {-4, 2, 2}, {2, -4, 2}, {2, 2, -4}},\n"
                     "{{4, 4, 4}, {-4, 2, 2}, {2, 2, -4}, {2, -4, 2}}}\n\n");
         }
+#endif
 
         auto currentTime = std::chrono::steady_clock::now();
         std::cout << tetCount << ": ";
@@ -1403,7 +1454,43 @@ int main(int argc, char *argv[])
         if (memoryUsage)
             std::cout << ", " << memoryUsage << " bytes";
         std::cout << "]" << std::endl;
+#ifdef PRINT_SYMMETRY_TOTALS
+        if (tetCount < 3)
+        {
+            if (tetCount == 1)
+                printf("    1 <12, mirror>\n");
+            else // tetCount == 2
+                printf("    1 <6, mirror>\n");
+        }
+        else
+        {
+            for (int i=0; i < MAXIMUM_TETCOUNT * 3; i++)
+            {
+                for (int symmetryType=0; symmetryType < SymmetryType_COUNT; symmetryType++)
+                {
+                    /*if (i == 1-1 && symmetryType == SymmetryType_Chiral)
+                        continue;*/
+                    size_t symmetryCount = 0;
+    #ifdef MULTITHREADING
+                    for (THREAD_ID threadID=0; threadID < WORKER_THREADS; threadID++)
+    #endif
+                    {
+                        symmetryCount += polytetSymmetryCount
+    #ifdef MULTITHREADING
+                            [threadID]
+    #endif
+                            [i][symmetryType];
+                    }
+                    if (symmetryCount)
+                        printf("    %zu <%d%s>\n", symmetryCount, i+1, symmetryTypeString[symmetryType]);
+                }
+            }
+            fflush(stdout);
+        }
+#endif
+#ifdef PRINT_POLYTETS_WITH_SYMMETRY
         for (int i=0; i<120; i++) putchar('-'); putchar('\n');
+#endif
         if (prevPolytetCount > polytetCount)
         {
             std::cerr << "Quit due to apparent overflow" << std::endl;
@@ -1451,6 +1538,9 @@ int main(int argc, char *argv[])
         else
         if (workAssignmentLength > MAXIMUM_WORK_ASSIGNMENT)
             workAssignmentLength = MAXIMUM_WORK_ASSIGNMENT;
+#ifdef PRINT_SYMMETRY_TOTALS
+        memset(polytetSymmetryCount, 0, sizeof(polytetSymmetryCount));
+#endif
 #ifdef MULTITHREADING
         memset(polytetChiralCount, 0, WORKER_THREADS * sizeof(*polytetChiralCount));
         for (THREAD_ID threadID=0; threadID < WORKER_THREADS; threadID++)
@@ -1462,7 +1552,11 @@ int main(int argc, char *argv[])
                 tetCount, std::ref(pool), std::ref(poolSize), std::ref((const uint8_t *&)basePolytetTable), basePolytetCompressedSize, polytetCount,
                 minOverlapDepth, minUnseenCompressedSubpolytet,
                 std::ref(hashTable), hashTableSize, std::ref(polytetTable), newPolytetsCompressedSize, polytetTableElementSize,
-                std::ref(newPolytetCount), polytetChiralCount);
+                std::ref(newPolytetCount), polytetChiralCount
+    #ifdef PRINT_SYMMETRY_TOTALS
+                , polytetSymmetryCount
+    #endif
+                );
         }
         for (THREAD_ID threadID=0; threadID < WORKER_THREADS; threadID++)
             workers[threadID].join();
@@ -1474,7 +1568,11 @@ int main(int argc, char *argv[])
             tetCount, pool, poolSize, (const uint8_t *&)basePolytetTable, basePolytetCompressedSize, polytetCount,
             minOverlapDepth, minUnseenCompressedSubpolytet,
             hashTable, hashTableSize, polytetTable, newPolytetsCompressedSize, polytetTableElementSize,
-            newPolytetCount, polytetChiralCount);
+            newPolytetCount, polytetChiralCount
+    #ifdef PRINT_SYMMETRY_TOTALS
+            , polytetSymmetryCount
+    #endif
+            );
 #endif
 
         memoryUsage = (uint8_t*)polytetTable + newPolytetCount * polytetTableElementSize - (uint8_t*)pool;
