@@ -876,8 +876,10 @@ void enumerate(
     struct SymmetryRoot
     {
         CompressedPolytetBits value;
+#if defined(PRINT_SYMMETRY_TOTALS) || defined(PRINT_POLYTETS_WITH_SYMMETRY)
         TetIndex tetI;
         uint8_t rotation;
+#endif
     };
 
 #if defined(PRINT_SYMMETRY_TOTALS) || defined(PRINT_POLYTETS_WITH_SYMMETRY)
@@ -933,8 +935,10 @@ void enumerate(
                     // Canonicalize the rotation of this new polytet in compressed form, so that it can be compared against others
                     SymmetryRoot runningLeastPolytet[2];
                     runningLeastPolytet[1].value = runningLeastPolytet[0].value = COMPRESSEDPOLYTETBITS_MAX;
+#if defined(PRINT_SYMMETRY_TOTALS) || defined(PRINT_POLYTETS_WITH_SYMMETRY)
                     int newRotatedPolytetCount     = 0;
                     int newRotatedPolytetSym3Count = 0;
+#endif
 
                     Tet *t = &polytet[1];
                     for (int i=0; i<tetCount; i++)
@@ -1011,8 +1015,10 @@ void enumerate(
                                 if (runningLeastPolytet[reflect].value > newRotatedPolytet.value)
                                 {
                                     runningLeastPolytet[reflect].value = newRotatedPolytet.value;
+#if defined(PRINT_SYMMETRY_TOTALS) || defined(PRINT_POLYTETS_WITH_SYMMETRY)
                                     runningLeastPolytet[reflect].tetI = i;
                                     runningLeastPolytet[reflect].rotation = rotationStep;
+#endif
                                 }
                             }
                         }
