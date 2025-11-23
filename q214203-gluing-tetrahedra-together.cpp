@@ -883,8 +883,8 @@ void enumerate(
 #if defined(PRINT_SYMMETRY_TOTALS) || defined(PRINT_POLYTETS_WITH_SYMMETRY)
     SymmetryRoot newRotatedPolytetList    [MAXIMUM_TETCOUNT * 3];
     SymmetryRoot newRotatedPolytetSym3List[MAXIMUM_TETCOUNT / 3];
-    int8_t symmetryList [MAXIMUM_TETCOUNT * 3 / 2 + 1];
-    int8_t symmetry3List[MAXIMUM_TETCOUNT / 3     + 1];
+    int8_t symmetryList [MAXIMUM_TETCOUNT * 3 + 1];
+    int8_t symmetry3List[MAXIMUM_TETCOUNT / 3 + 1];
 #endif
 
 #ifdef MULTITHREADING
