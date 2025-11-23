@@ -931,7 +931,7 @@ void enumerate(
 #endif
                     {
 #ifdef MULTITHREADING
-                        //boost::mutex::scoped_lock lock(hashTableMutex[shard]); // is a very rare race condition possible without this lock?
+                        boost::mutex::scoped_lock lock(hashTableMutex[shard]);
 #endif
                         for (;;)
                         {
