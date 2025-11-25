@@ -237,6 +237,12 @@ Coord dot(const Coord3 &a, const Coord3 &b)
 }
 #endif
 
+#ifdef PRINT_POLYTETS_EDGE_CASES
+#   define OVERLAP_EDGES_TO_EDGES -1
+#else
+#   define OVERLAP_EDGES_TO_EDGES 1
+#endif
+
 // This class must be used in exactly the way it is in this program. That is, setA() and setB() must be called first, before operator(),
 // and point to tetrahedrons in the same Polytet. Both tetrahedrons must be end pieces, singly attached. If operator() returns "true",
 // both setA() and setB() must be called before the next operator() call.
@@ -270,7 +276,7 @@ private:
 public:
      TetrahedronOverlap() {mpz_initOrClear<mpz_init , mpz_inits >();}
     ~TetrahedronOverlap() {mpz_initOrClear<mpz_clear, mpz_clears>();}
-    bool operator()(const mpz_t maximalTouchingSqrDistance)
+    int8_t operator()(const mpz_t maximalTouchingSqrDistance)
     {
         // Skip the longer overlap checking algorithm if the two tetrahedrons' centers are sufficiently separated.
         for (int d=0; d<3; d++)
@@ -390,11 +396,11 @@ public:
         // But we can detect that case by checking the edgeEdgeIntersectionCount[] values.
         return edgeEdgeIntersectionCount[0] == 4 &&
                edgeEdgeIntersectionCount[1] == 4 &&
-               edgeEdgeIntersectionCount[2] == 4;
+               edgeEdgeIntersectionCount[2] == 4 ? OVERLAP_EDGES_TO_EDGES : 0;
     }
 #else
 public:
-    bool operator()(const Coord &maximalTouchingSqrDistance)
+    int8_t operator()(const Coord &maximalTouchingSqrDistance)
     {
         // Skip the longer overlap checking algorithm if the two tetrahedrons' centers are sufficiently separated.
         {
@@ -496,7 +502,7 @@ public:
         // But we can detect that case by checking the edgeEdgeIntersectionCount[] values.
         return edgeEdgeIntersectionCount[0] == 4 &&
                edgeEdgeIntersectionCount[1] == 4 &&
-               edgeEdgeIntersectionCount[2] == 4;
+               edgeEdgeIntersectionCount[2] == 4 ? OVERLAP_EDGES_TO_EDGES : 0;
     }
 #endif
 };
@@ -1086,8 +1092,16 @@ void enumerate(
                         if (compressedPath >= minUnseenCompressedSubpolytet)
                         {
                             overlap.setB(polytet[tetCheckIntersectionI]);
-                            if (overlap(maximalTouchingSqrDistance))
+                            if (auto overlapResult = overlap(maximalTouchingSqrDistance))
                             {
+#ifdef PRINT_POLYTETS_EDGE_CASES
+                                if (overlapResult < 0)
+                                {
+                                    boost::mutex::scoped_lock lock(printPolytetMutex);
+                                    printf("0x%llX\n", runningLeastPolytet[0].value);
+                                    printPolytet(polytet);
+                                }
+#endif
                                 overlapCache[                      compressedPath  - 1] = true;
                                 overlapCache[reflectCompressedPath(compressedPath) - 1] = true;
                                 foundOverlaps = true;

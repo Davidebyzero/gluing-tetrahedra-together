@@ -6,6 +6,7 @@
 #define HASH_TABLE_RATIO 6
 //#define SHOW_PROGRESS 16  // if defined, show progress starting at this term
 //#define PRINT_POLYTETS               // requires USE_GMP
+//#define PRINT_POLYTETS_EDGE_CASES    // requires USE_GMP; print edge cases which require the latest fix to the overlap-checking algorithm
 //#define PRINT_POLYTETS_WITH_SYMMETRY // requires USE_GMP
 //#define PRINT_SYMMETRY_TOTALS
 
