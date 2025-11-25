@@ -842,16 +842,9 @@ void enumerate(
     const int polytetTableElementSize,
 
     size_t &newPolytetCount,
-#ifdef MULTITHREADING
-    size_t polytetChiralCount[WORKER_THREADS]
-#   ifdef PRINT_SYMMETRY_TOTALS
-    , size_t polytetSymmetryCount[WORKER_THREADS][MAXIMUM_TETCOUNT * 3][SymmetryType_COUNT]
-#   endif
-#else
     size_t &polytetChiralCount
-#   ifdef PRINT_SYMMETRY_TOTALS
-    , size_t polytetSymmetryCount                [MAXIMUM_TETCOUNT * 3][SymmetryType_COUNT]
-#   endif
+#ifdef PRINT_SYMMETRY_TOTALS
+    , size_t polytetSymmetryCount[MAXIMUM_TETCOUNT * 3][SymmetryType_COUNT]
 #endif
     )
 {
@@ -1134,11 +1127,10 @@ void enumerate(
                         }
                         size_t newPolytetCountFetched = __atomic_fetch_add(&newPolytetCount, 1, __ATOMIC_RELAXED);
                         void *entry = (uint8_t*)polytetTable + newPolytetCountFetched * polytetTableElementSize;
-                        polytetChiralCount[threadID] += isChiral;
 #else
                         void *entry = (uint8_t*)polytetTable + newPolytetCount        * polytetTableElementSize;
-                        polytetChiralCount           += isChiral;
 #endif
+                        polytetChiralCount += isChiral;
                         if ((uint8_t*)entry + polytetTableElementSize - (uint8_t*)pool > poolSize)
                         {
 #ifdef MULTITHREADING
@@ -1233,9 +1225,6 @@ void enumerate(
 
     #ifdef PRINT_SYMMETRY_TOTALS
                         polytetSymmetryCount
-        #ifdef MULTITHREADING
-                            [threadID]
-        #endif
                             [symmetry - 1]
                             [isChiral ? SymmetryType_Chiral : isMirror ? SymmetryType_AchiralMirror : SymmetryType_AchiralNonmirror]++;
     #endif
@@ -1558,9 +1547,9 @@ int main(int argc, char *argv[])
                 tetCount, std::ref(pool), std::ref(poolSize), std::ref((const uint8_t *&)basePolytetTable), basePolytetCompressedSize, polytetCount,
                 minOverlapDepth, minUnseenCompressedSubpolytet,
                 std::ref(hashTable), hashTableSize, std::ref(polytetTable), newPolytetsCompressedSize, polytetTableElementSize,
-                std::ref(newPolytetCount), polytetChiralCount
+                std::ref(newPolytetCount), std::ref(polytetChiralCount[threadID])
     #ifdef PRINT_SYMMETRY_TOTALS
-                , polytetSymmetryCount
+                , polytetSymmetryCount[threadID]
     #endif
                 );
         }
