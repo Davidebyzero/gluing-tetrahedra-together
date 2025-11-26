@@ -670,8 +670,9 @@ CompressedSubpolytet reflectCompressedPath(CompressedSubpolytet compressedPath)
 
 #ifdef USE_GMP
 mpz_t printCenter[3], printTmp[3];
-void printPolytet(Polytet &polytet)
+void printPolytet(CompressedPolytetBits value, Polytet &polytet)
 {
+    printf("0x%llX\n", value);
     bool first = true;
     for (int d=0; d<3; d++)
         mpz_set_ui(printCenter[d], 0);
@@ -1098,8 +1099,7 @@ void enumerate(
                                 if (overlapResult < 0)
                                 {
                                     boost::mutex::scoped_lock lock(printPolytetMutex);
-                                    printf("0x%llX\n", runningLeastPolytet[0].value);
-                                    printPolytet(polytet);
+                                    printPolytet(runningLeastPolytet[0].value, polytet);
                                 }
 #endif
                                 overlapCache[                      compressedPath  - 1] = true;
@@ -1121,7 +1121,7 @@ void enumerate(
 #if defined(USE_GMP) && defined(PRINT_POLYTETS) && !defined(PRINT_POLYTETS_WITH_SYMMETRY)
                     {
                         boost::mutex::scoped_lock lock(printPolytetMutex);
-                        printPolytet(polytet);
+                        printPolytet(runningLeastPolytet[0].value, polytet);
                     }
 #endif
                     {
@@ -1267,8 +1267,7 @@ void enumerate(
                             if (newRotatedPolytetSym3Count)
                                 putchar('\n');*/
 
-                            printf("0x%llX\n", runningLeastPolytet[0].value);
-                            printPolytet(polytet);
+                            printPolytet(runningLeastPolytet[0].value, polytet);
                         }
     #endif // PRINT_POLYTETS_WITH_SYMMETRY
                     }
