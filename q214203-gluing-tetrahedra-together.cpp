@@ -822,6 +822,154 @@ static const char *const symmetryTypeString[SymmetryType_COUNT] =
     ", mirror2",
 };
 
+struct SymmetryRoot
+{
+    CompressedPolytetBits value;
+#if defined(PRINT_SYMMETRY_TOTALS) || defined(PRINT_POLYTETS_WITH_SYMMETRY)
+    TetIndex tetI;
+    uint8_t rotation;
+#endif
+};
+
+void canonicalizePolytet(Polytet &polytet, int tetCount, SymmetryRoot runningLeastPolytet[2], CompressedPolytet &newRotatedPolytet, bool &isChiral
+#if defined(PRINT_SYMMETRY_TOTALS) || defined(PRINT_POLYTETS_WITH_SYMMETRY)
+    , int &mirrorType // only meaningful if "isChiral" is false
+    , SymmetryRoot newRotatedPolytetList    [(MAXIMUM_TETCOUNT + 1) * 3]
+    , SymmetryRoot newRotatedPolytetSym3List[(MAXIMUM_TETCOUNT + 1) / 3]
+    , int &newRotatedPolytetCount
+    , int &newRotatedPolytetSym3Count
+#endif
+    )
+{
+    runningLeastPolytet[1].value = runningLeastPolytet[0].value = COMPRESSEDPOLYTETBITS_MAX;
+#if defined(PRINT_SYMMETRY_TOTALS) || defined(PRINT_POLYTETS_WITH_SYMMETRY)
+    newRotatedPolytetCount     = 0;
+    newRotatedPolytetSym3Count = 0;
+#endif
+
+    Tet *t = &polytet[1];
+    for (int i=0; i<tetCount; i++)
+    {
+        static const uint8_t bitRotationTable[1 << 3][2 * 2] =
+        {
+            {0, 2,   0, 2}, // 000
+            {0, 0,   2, 2}, // 001 -> 001
+            {1, 1,   0, 0}, // 010 -> 001
+            {0, 0,   0, 0}, // 011 -> 011
+            {2, 2,   1, 1}, // 100 -> 001
+            {2, 2,   2, 2}, // 101 -> 011
+            {1, 1,   1, 1}, // 110 -> 011
+            {0, 2,   0, 2}, // 111
+        };
+        const uint8_t *rotationStepRange;
+
+        const RotationTable *thisRotationTable;
+        {
+            const Tet &singlyAttachedTet = polytet[i];
+            for (int j=0; j<3; j++)
+                if (singlyAttachedTet.faceAttached[j] >= 0)
+                    goto skipThisTet; // not a singly attached tet
+            t = &polytet[singlyAttachedTet.faceAttached[3]];
+            int attachedFace = singlyAttachedTet.faceAttachedFace[3];
+            thisRotationTable = &rotationTable[attachedFace];
+        }
+        {
+            // Calculate what the top 3 bits of the serialized value will be, in the same way as the top-level "append" call
+            unsigned topValue = 0;
+            for (int _faceNum=0; _faceNum<3; _faceNum++)
+            {
+                int rotatedFaceNum = faceRotateReflect[0][_faceNum][0];
+                int faceNum = thisRotationTable->faceMap[rotatedFaceNum];
+                if (t->faceAttached[faceNum] >= 0)
+                    topValue |= 1 << _faceNum;
+            }
+            // Boost speed by canonicalizing the lower 3 bits to be only "001", "011", or "111".
+            // This overrides the "least binary representation" criterion.
+            rotationStepRange = bitRotationTable[topValue];
+        }
+        for (int reflect=0; reflect<2; reflect++, rotationStepRange+=2)
+        {
+            for (uint8_t rotationStep=rotationStepRange[0]; rotationStep<=rotationStepRange[1]; rotationStep++)
+            {
+                polytet.resetIndexing(i);
+                newRotatedPolytet.value = 0;
+                newRotatedPolytet.reflect = reflect;
+                newRotatedPolytet.append(*t, thisRotationTable, rotationStep);
+
+#if defined(PRINT_SYMMETRY_TOTALS) || defined(PRINT_POLYTETS_WITH_SYMMETRY)
+                if (!reflect)
+                {
+                    if (newRotatedPolytetCount && rotationStep == 2 && rotationStepRange[0] != rotationStepRange[1] &&
+                        newRotatedPolytetList[newRotatedPolytetCount - 1].value == newRotatedPolytet.value)
+                    {
+                        newRotatedPolytetCount -= 2;
+                        newRotatedPolytetSym3List[newRotatedPolytetSym3Count].value = newRotatedPolytet.value;
+                        newRotatedPolytetSym3List[newRotatedPolytetSym3Count].tetI = i;
+                        newRotatedPolytetSym3List[newRotatedPolytetSym3Count].rotation = rotationStep;
+                        newRotatedPolytetSym3Count++;
+                    }
+                    else
+                    {
+                        newRotatedPolytetList[newRotatedPolytetCount].value = newRotatedPolytet.value;
+                        newRotatedPolytetList[newRotatedPolytetCount].tetI = i;
+                        newRotatedPolytetList[newRotatedPolytetCount].rotation = rotationStep;
+                        newRotatedPolytetCount++;
+                    }
+                }
+#endif
+
+                // Update the running "least" rotation
+                if (runningLeastPolytet[reflect].value > newRotatedPolytet.value)
+                {
+                    runningLeastPolytet[reflect].value = newRotatedPolytet.value;
+#if defined(PRINT_SYMMETRY_TOTALS) || defined(PRINT_POLYTETS_WITH_SYMMETRY)
+                    runningLeastPolytet[reflect].tetI = i;
+                    runningLeastPolytet[reflect].rotation = rotationStep;
+#endif
+                }
+            }
+        }
+    skipThisTet:;
+    }
+
+    isChiral = runningLeastPolytet[1].value != runningLeastPolytet[0].value;
+    if (!isChiral)
+    {
+#if defined(PRINT_SYMMETRY_TOTALS) || defined(PRINT_POLYTETS_WITH_SYMMETRY)
+        if (runningLeastPolytet[0].tetI == runningLeastPolytet[1].tetI)
+            mirrorType = 1;
+        else
+        {
+            auto checkMirror = [&](TetIndex tetI) -> int8_t
+            {
+                polytet[                       tetI].tagSkipOverlapCheck(polytet, 1);
+                CompressedSubpolytet path0to1 =                       (polytet[runningLeastPolytet[1].tetI].compressedPath - 1) / 3;
+                polytet[runningLeastPolytet[1].tetI].tagSkipOverlapCheck(polytet, 1);
+                CompressedSubpolytet path1to0 = reflectCompressedPath((polytet[                       tetI].compressedPath - 1) / 3);
+                if (path1to0 != path0to1)
+                    return 0;
+                while (path0to1 > 3)
+                    path0to1 = ((path0to1 - 1) / 3 - 1) / 3;
+                return path0to1 ? 2 : 1;
+            };
+            for (int i=0; i<newRotatedPolytetCount; i++)
+                if (newRotatedPolytetList[i].value == runningLeastPolytet[0].value)
+                    if (mirrorType = checkMirror(newRotatedPolytetList[i].tetI); mirrorType)
+                        goto foundIsMirror;
+            for (int i=0; i<newRotatedPolytetSym3Count; i++)
+                if (newRotatedPolytetSym3List[i].value == runningLeastPolytet[0].value)
+                    if (mirrorType = checkMirror(newRotatedPolytetSym3List[i].tetI); mirrorType)
+                        goto foundIsMirror;
+            mirrorType = 0;
+        foundIsMirror:;
+        }
+#endif
+    }
+    else
+    if (runningLeastPolytet[0].value > runningLeastPolytet[1].value)
+        runningLeastPolytet[0].value = runningLeastPolytet[1].value;
+}
+
 void enumerate(
 #ifdef MULTITHREADING
     THREAD_ID threadID,
@@ -880,15 +1028,6 @@ void enumerate(
 
     CompressedPolytet newRotatedPolytet(polytet);
 
-    struct SymmetryRoot
-    {
-        CompressedPolytetBits value;
-#if defined(PRINT_SYMMETRY_TOTALS) || defined(PRINT_POLYTETS_WITH_SYMMETRY)
-        TetIndex tetI;
-        uint8_t rotation;
-#endif
-    };
-
 #if defined(PRINT_SYMMETRY_TOTALS) || defined(PRINT_POLYTETS_WITH_SYMMETRY)
     SymmetryRoot newRotatedPolytetList    [(MAXIMUM_TETCOUNT + 1) * 3];
     SymmetryRoot newRotatedPolytetSym3List[(MAXIMUM_TETCOUNT + 1) / 3];
@@ -941,136 +1080,21 @@ void enumerate(
                     attachNewTet(polytet, tetCount - 1, tetNumToAttachTo, faceNum);
                     // Canonicalize the rotation of this new polytet in compressed form, so that it can be compared against others
                     SymmetryRoot runningLeastPolytet[2];
-                    runningLeastPolytet[1].value = runningLeastPolytet[0].value = COMPRESSEDPOLYTETBITS_MAX;
-#if defined(PRINT_SYMMETRY_TOTALS) || defined(PRINT_POLYTETS_WITH_SYMMETRY)
-                    int newRotatedPolytetCount     = 0;
-                    int newRotatedPolytetSym3Count = 0;
-#endif
 
-                    Tet *t = &polytet[1];
-                    for (int i=0; i<tetCount; i++)
-                    {
-                        static const uint8_t bitRotationTable[1 << 3][2 * 2] =
-                        {
-                            {0, 2,   0, 2}, // 000
-                            {0, 0,   2, 2}, // 001 -> 001
-                            {1, 1,   0, 0}, // 010 -> 001
-                            {0, 0,   0, 0}, // 011 -> 011
-                            {2, 2,   1, 1}, // 100 -> 001
-                            {2, 2,   2, 2}, // 101 -> 011
-                            {1, 1,   1, 1}, // 110 -> 011
-                            {0, 2,   0, 2}, // 111
-                        };
-                        const uint8_t *rotationStepRange;
-
-                        const RotationTable *thisRotationTable;
-                        {
-                            Tet &singlyAttachedTet = polytet[i];
-                            for (int j=0; j<3; j++)
-                                if (singlyAttachedTet.faceAttached[j] >= 0)
-                                    goto skipThisTet; // not a singly attached tet
-                            t = &polytet[singlyAttachedTet.faceAttached[3]];
-                            int attachedFace = singlyAttachedTet.faceAttachedFace[3];
-                            thisRotationTable = &rotationTable[attachedFace];
-                        }
-                        {
-                            // Calculate what the top 3 bits of the serialized value will be, in the same way as the top-level "append" call
-                            unsigned topValue = 0;
-                            for (int _faceNum=0; _faceNum<3; _faceNum++)
-                            {
-                                int rotatedFaceNum = faceRotateReflect[0][_faceNum][0];
-                                int faceNum = thisRotationTable->faceMap[rotatedFaceNum];
-                                if (t->faceAttached[faceNum] >= 0)
-                                    topValue |= 1 << _faceNum;
-                            }
-                            // Boost speed by canonicalizing the lower 3 bits to be only "001", "011", or "111".
-                            // This overrides the "least binary representation" criterion.
-                            rotationStepRange = bitRotationTable[topValue];
-                        }
-                        for (int reflect=0; reflect<2; reflect++, rotationStepRange+=2)
-                        {
-                            for (uint8_t rotationStep=rotationStepRange[0]; rotationStep<=rotationStepRange[1]; rotationStep++)
-                            {
-                                polytet.resetIndexing(i);
-                                newRotatedPolytet.value = 0;
-                                newRotatedPolytet.reflect = reflect;
-                                newRotatedPolytet.append(*t, thisRotationTable, rotationStep);
-
-#if defined(PRINT_SYMMETRY_TOTALS) || defined(PRINT_POLYTETS_WITH_SYMMETRY)
-                                if (!reflect)
-                                {
-                                    if (newRotatedPolytetCount && rotationStep == 2 && rotationStepRange[0] != rotationStepRange[1] &&
-                                        newRotatedPolytetList[newRotatedPolytetCount - 1].value == newRotatedPolytet.value)
-                                    {
-                                        newRotatedPolytetCount -= 2;
-                                        newRotatedPolytetSym3List[newRotatedPolytetSym3Count].value = newRotatedPolytet.value;
-                                        newRotatedPolytetSym3List[newRotatedPolytetSym3Count].tetI = i;
-                                        newRotatedPolytetSym3List[newRotatedPolytetSym3Count].rotation = rotationStep;
-                                        newRotatedPolytetSym3Count++;
-                                    }
-                                    else
-                                    {
-                                        newRotatedPolytetList[newRotatedPolytetCount].value = newRotatedPolytet.value;
-                                        newRotatedPolytetList[newRotatedPolytetCount].tetI = i;
-                                        newRotatedPolytetList[newRotatedPolytetCount].rotation = rotationStep;
-                                        newRotatedPolytetCount++;
-                                    }
-                                }
-#endif
-
-                                // Update the running "least" rotation
-                                if (runningLeastPolytet[reflect].value > newRotatedPolytet.value)
-                                {
-                                    runningLeastPolytet[reflect].value = newRotatedPolytet.value;
-#if defined(PRINT_SYMMETRY_TOTALS) || defined(PRINT_POLYTETS_WITH_SYMMETRY)
-                                    runningLeastPolytet[reflect].tetI = i;
-                                    runningLeastPolytet[reflect].rotation = rotationStep;
-#endif
-                                }
-                            }
-                        }
-                    skipThisTet:;
-                    }
-
-                    bool isChiral = runningLeastPolytet[1].value != runningLeastPolytet[0].value;
+                    bool isChiral;
 #if defined(PRINT_SYMMETRY_TOTALS) || defined(PRINT_POLYTETS_WITH_SYMMETRY)
                     int mirrorType; // only meaningful if "isChiral" is false
+                    int newRotatedPolytetCount, newRotatedPolytetSym3Count;
 #endif
-                    if (!isChiral)
-                    {
+                    canonicalizePolytet(polytet, tetCount, runningLeastPolytet, newRotatedPolytet, isChiral
 #if defined(PRINT_SYMMETRY_TOTALS) || defined(PRINT_POLYTETS_WITH_SYMMETRY)
-                        if (runningLeastPolytet[0].tetI == runningLeastPolytet[1].tetI)
-                            mirrorType = 1;
-                        else
-                        {
-                            auto checkMirror = [&](TetIndex tetI) -> int8_t
-                            {
-                                polytet[                       tetI].tagSkipOverlapCheck(polytet, 1);
-                                CompressedSubpolytet path0to1 =                       (polytet[runningLeastPolytet[1].tetI].compressedPath - 1) / 3;
-                                polytet[runningLeastPolytet[1].tetI].tagSkipOverlapCheck(polytet, 1);
-                                CompressedSubpolytet path1to0 = reflectCompressedPath((polytet[                       tetI].compressedPath - 1) / 3);
-                                if (path1to0 != path0to1)
-                                    return 0;
-                                while (path0to1 > 3)
-                                    path0to1 = ((path0to1 - 1) / 3 - 1) / 3;
-                                return path0to1 ? 2 : 1;
-                            };
-                            for (int i=0; i<newRotatedPolytetCount; i++)
-                                if (newRotatedPolytetList[i].value == runningLeastPolytet[0].value)
-                                    if (mirrorType = checkMirror(newRotatedPolytetList[i].tetI); mirrorType)
-                                        goto foundIsMirror;
-                            for (int i=0; i<newRotatedPolytetSym3Count; i++)
-                                if (newRotatedPolytetSym3List[i].value == runningLeastPolytet[0].value)
-                                    if (mirrorType = checkMirror(newRotatedPolytetSym3List[i].tetI); mirrorType)
-                                        goto foundIsMirror;
-                            mirrorType = 0;
-                        foundIsMirror:;
-                        }
+                        , mirrorType
+                        , newRotatedPolytetList
+                        , newRotatedPolytetSym3List
+                        , newRotatedPolytetCount
+                        , newRotatedPolytetSym3Count
 #endif
-                    }
-                    else
-                    if (runningLeastPolytet[0].value > runningLeastPolytet[1].value)
-                        runningLeastPolytet[0].value = runningLeastPolytet[1].value;
+                        );
 
                     size_t hashIndex = hash(runningLeastPolytet[0].value) % hashTableSize;
                     HashIndex *index = &hashTable[hashIndex];
