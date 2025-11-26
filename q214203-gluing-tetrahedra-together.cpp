@@ -1263,22 +1263,9 @@ void enumerate(
                             boost::mutex::scoped_lock lock(printPolytetMutex);
 
                             printf("<%d", symmetry);
-                            /*printf("<");
-                            for (int i=0; i<symmetryCount; i++)
-                                printf("%s%d", i?", ":"", symmetryList[i]);
-                            for (int i=0; i<symmetry3Count; i++)
-                                printf("%s%d(3)", i || symmetryCount ? ", " : "", symmetry3List[i]);*/
                             if (!isChiral)
                                 printf("%s%s", symmetryCount || symmetry3Count ? ", " : "", mirrorType ? (mirrorType==1 ? "mirror" : "mirror2") : "achiral");
                             printf(">\n");
-
-                            /*for (int i=0; i<newRotatedPolytetCount; i++)
-                                printf("%s%llX", i?", ":"", newRotatedPolytetList[i].value);
-                            putchar('\n');
-                            for (int i=0; i<newRotatedPolytetSym3Count; i++)
-                                printf("%s%llX", i?", ":"", newRotatedPolytetSym3List[i].value);
-                            if (newRotatedPolytetSym3Count)
-                                putchar('\n');*/
 
                             printPolytet(runningLeastPolytet[0].value, polytet);
                         }
