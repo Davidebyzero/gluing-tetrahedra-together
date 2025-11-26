@@ -801,11 +801,12 @@ template <typename T> int sign(T x)
     return (T(0) < x) - (x < T(0));
 }
 
-enum
+enum SymmetryType
 {
     SymmetryType_Chiral,
     SymmetryType_AchiralNonmirror,
     SymmetryType_AchiralMirror,
+    SymmetryType_AchiralMirrorFace, // tetrahedral face as mirror plane
     SymmetryType_COUNT
 };
 static const char *const symmetryTypeString[SymmetryType_COUNT] =
@@ -813,6 +814,7 @@ static const char *const symmetryTypeString[SymmetryType_COUNT] =
     "",
     ", achiral",
     ", mirror",
+    ", mirror2",
 };
 
 void enumerate(
@@ -1027,32 +1029,36 @@ void enumerate(
 
                     bool isChiral = runningLeastPolytet[1].value != runningLeastPolytet[0].value;
 #if defined(PRINT_SYMMETRY_TOTALS) || defined(PRINT_POLYTETS_WITH_SYMMETRY)
-                    bool isMirror; // only meaningful if "isChiral" is false
+                    int mirrorType; // only meaningful if "isChiral" is false
 #endif
                     if (!isChiral)
                     {
 #if defined(PRINT_SYMMETRY_TOTALS) || defined(PRINT_POLYTETS_WITH_SYMMETRY)
                         if (runningLeastPolytet[0].tetI == runningLeastPolytet[1].tetI)
-                            isMirror = true;
+                            mirrorType = 1;
                         else
                         {
-                            auto checkMirror = [&](TetIndex tetI) -> bool
+                            auto checkMirror = [&](TetIndex tetI) -> int8_t
                             {
                                 polytet[                       tetI].tagSkipOverlapCheck(polytet, 1);
                                 CompressedSubpolytet path0to1 =                       (polytet[runningLeastPolytet[1].tetI].compressedPath - 1) / 3;
                                 polytet[runningLeastPolytet[1].tetI].tagSkipOverlapCheck(polytet, 1);
                                 CompressedSubpolytet path1to0 = reflectCompressedPath((polytet[                       tetI].compressedPath - 1) / 3);
-                                return path1to0 == path0to1;
+                                if (path1to0 != path0to1)
+                                    return 0;
+                                while (path0to1 > 3)
+                                    path0to1 = ((path0to1 - 1) / 3 - 1) / 3;
+                                return path0to1 ? 2 : 1;
                             };
                             for (int i=0; i<newRotatedPolytetCount; i++)
                                 if (newRotatedPolytetList[i].value == runningLeastPolytet[0].value)
-                                    if (isMirror = checkMirror(newRotatedPolytetList[i].tetI); isMirror)
+                                    if (mirrorType = checkMirror(newRotatedPolytetList[i].tetI); mirrorType)
                                         goto foundIsMirror;
                             for (int i=0; i<newRotatedPolytetSym3Count; i++)
                                 if (newRotatedPolytetSym3List[i].value == runningLeastPolytet[0].value)
-                                    if (isMirror = checkMirror(newRotatedPolytetSym3List[i].tetI); isMirror)
+                                    if (mirrorType = checkMirror(newRotatedPolytetSym3List[i].tetI); mirrorType)
                                         goto foundIsMirror;
-                            isMirror = false;
+                            mirrorType = 0;
                         foundIsMirror:;
                         }
 #endif
@@ -1240,7 +1246,7 @@ void enumerate(
     #ifdef PRINT_SYMMETRY_TOTALS
                         polytetSymmetryCount
                             [symmetry - 1]
-                            [isChiral ? SymmetryType_Chiral : isMirror ? SymmetryType_AchiralMirror : SymmetryType_AchiralNonmirror]++;
+                            [isChiral ? SymmetryType_Chiral : SymmetryType_AchiralNonmirror + mirrorType]++;
     #endif
     #ifdef PRINT_POLYTETS_WITH_SYMMETRY
         #ifndef PRINT_POLYTETS
@@ -1256,7 +1262,7 @@ void enumerate(
                             for (int i=0; i<symmetry3Count; i++)
                                 printf("%s%d(3)", i || symmetryCount ? ", " : "", symmetry3List[i]);*/
                             if (!isChiral)
-                                printf("%s%s", symmetryCount || symmetry3Count ? ", " : "", isMirror ? "mirror" : "achiral");
+                                printf("%s%s", symmetryCount || symmetry3Count ? ", " : "", mirrorType ? (mirrorType==1 ? "mirror" : "mirror2") : "achiral");
                             printf(">\n");
 
                             /*for (int i=0; i<newRotatedPolytetCount; i++)
