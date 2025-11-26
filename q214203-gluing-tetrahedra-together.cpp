@@ -1250,6 +1250,10 @@ void enumerate(
                             symmetry3Count++;
                         }
 
+    #if defined(PRINT_SYMMETRY_TOTALS) || defined(PRINT_POLYTETS_WITH_SYMMETRY)
+                        if (mirrorType && (symmetry > 3 || symmetry == 2))
+                            mirrorType = 1; // collapse "mirror2" into "mirror" for symmetries that have multiple mirror planes
+    #endif
     #ifdef PRINT_SYMMETRY_TOTALS
                         polytetSymmetryCount
                             [symmetry - 1]
