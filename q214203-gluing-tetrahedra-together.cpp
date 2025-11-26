@@ -675,9 +675,16 @@ CompressedSubpolytet reflectCompressedPath(CompressedSubpolytet compressedPath)
 #       error Cannot print polytets with overlap checking disabled
 #   endif
 mpz_t printCenter[3], printTmp[3];
-void printPolytet(CompressedPolytetBits value, Polytet &polytet)
+void printPolytet(CompressedPolytetBits value, Polytet &polytet,
+    const char *valuePrefix="", const char *valueSuffix="\n", bool nestedParens=true, const char *openParen="{", const char *closeParen="}")
 {
-    printf("0x%llX\n", value);
+    std::cout << valuePrefix;
+#if MAXIMUM_TETCOUNT > 23
+    printf("0x%llX%08llX", ((uint64_t*)&value)[1], ((uint64_t*)&value)[0]);
+#else
+    printf("0x%llX", value);
+#endif
+    std::cout << valueSuffix;
     bool first = true;
     for (int d=0; d<3; d++)
         mpz_set_ui(printCenter[d], 0);
@@ -689,18 +696,19 @@ void printPolytet(CompressedPolytetBits value, Polytet &polytet)
         mpz_div_ui(printCenter[d], printCenter[d], polytet.size() * 4);
     for (int i=0; i<polytet.size(); i++)
     {
-        printf(first ? "{" : ",\n");
+        printf(first ? (nestedParens ? openParen : "") : ",\n");
         first = false;
-        putchar('{');
+        if (nestedParens) std::cout << openParen;
         for (int p=0; p<4; p++)
         {
             for (int d=0; d<3; d++)
                 mpz_sub(printTmp[d], polytet[i].t.t[p][d], printCenter[d]);
-            gmp_printf("%s{%Zd, %Zd, %Zd}", p ? ", " : "", printTmp[0], printTmp[1], printTmp[2]);
+            gmp_printf("%s%s%Zd, %Zd, %Zd%s", p ? ", " : "", openParen, printTmp[0], printTmp[1], printTmp[2], closeParen);
         }
-        putchar('}');
+        if (nestedParens) std::cout << closeParen;
     }
-    printf("}\n\n");
+    if (nestedParens) std::cout << closeParen;
+    std::cout << std::endl << std::endl;
 }
 #endif
 
