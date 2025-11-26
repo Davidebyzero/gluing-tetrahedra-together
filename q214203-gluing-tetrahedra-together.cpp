@@ -511,6 +511,7 @@ void attachNewTet(Polytet &polytet, TetIndex i, TetIndex iAttachTo, const int fa
 {
     Tet &t             = polytet[i];
     Tet &tetToAttachTo = polytet[iAttachTo];
+#ifndef DISABLE_OVERLAP_CHECKING
 #ifdef USE_GMP
     mpz_t *newVertex = t.t.t[0];
     // Get center of face by averaging its vertices' coordinates.
@@ -552,6 +553,7 @@ void attachNewTet(Polytet &polytet, TetIndex i, TetIndex iAttachTo, const int fa
             t.t[1+p][d] = tetToAttachTo.t[p1][d];
 #endif
     }
+#endif // DISABLE_OVERLAP_CHECKING
     t.faceAttached    [0] = -1;
     t.faceAttached    [1] = -1;
     t.faceAttached    [2] = -1;
@@ -669,6 +671,9 @@ CompressedSubpolytet reflectCompressedPath(CompressedSubpolytet compressedPath)
 }
 
 #ifdef USE_GMP
+#   if defined(DISABLE_OVERLAP_CHECKING) && (defined(PRINT_POLYTETS) || defined(PRINT_POLYTETS_EDGE_CASES) || defined(PRINT_POLYTETS_WITH_SYMMETRY))
+#       error Cannot print polytets with overlap checking disabled
+#   endif
 mpz_t printCenter[3], printTmp[3];
 void printPolytet(CompressedPolytetBits value, Polytet &polytet)
 {
@@ -1086,6 +1091,7 @@ void enumerate(
                             index = (HashIndex*)((uint8_t*)entry + newPolytetsCompressedSize);
                         }
                     }
+#ifndef DISABLE_OVERLAP_CHECKING
                     // Check for overlap between this newly attached tetrahedron and the existing ones,
                     // and defer this until after the deduplication, to save a lot of time
                     overlap.setA(newTet);
@@ -1101,13 +1107,13 @@ void enumerate(
                             overlap.setB(polytet[tetCheckIntersectionI]);
                             if (auto overlapResult = overlap(maximalTouchingSqrDistance))
                             {
-#ifdef PRINT_POLYTETS_EDGE_CASES
+#   ifdef PRINT_POLYTETS_EDGE_CASES
                                 if (overlapResult < 0)
                                 {
                                     boost::mutex::scoped_lock lock(printPolytetMutex);
                                     printPolytet(runningLeastPolytet[0].value, polytet);
                                 }
-#endif
+#   endif
                                 overlapCache[                      compressedPath  - 1] = true;
                                 overlapCache[reflectCompressedPath(compressedPath) - 1] = true;
                                 foundOverlaps = true;
@@ -1123,6 +1129,7 @@ void enumerate(
                             }
                         }
                     }
+#endif // DISABLE_OVERLAP_CHECKING
                     // No overlap found, so add runningLeastPolytet[0].value to hash table and chiral count
 #if defined(USE_GMP) && defined(PRINT_POLYTETS) && !defined(PRINT_POLYTETS_WITH_SYMMETRY)
                     {

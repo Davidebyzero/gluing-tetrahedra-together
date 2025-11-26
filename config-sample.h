@@ -9,6 +9,7 @@
 //#define PRINT_POLYTETS_EDGE_CASES    // requires USE_GMP; print edge cases which require the latest fix to the overlap-checking algorithm
 //#define PRINT_POLYTETS_WITH_SYMMETRY // requires USE_GMP
 //#define PRINT_SYMMETRY_TOTALS
+//#define DISABLE_OVERLAP_CHECKING
 
 #define MAXIMUM_TETCOUNT 17 // 28
 
