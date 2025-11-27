@@ -1187,11 +1187,10 @@ void enumerate(
     #if defined(PRINT_SYMMETRY_TOTALS) || defined(PRINT_POLYTETS_WITH_SYMMETRY)
                         if (mirrorType && (symmetry > 3 || symmetry == 2))
                             mirrorType = 1; // collapse "mirror2" into "mirror" for symmetries that have multiple mirror planes
+                        auto symmetryType = isChiral ? SymmetryType_Chiral : SymmetryType_AchiralNonmirror + mirrorType;
     #endif
     #ifdef PRINT_SYMMETRY_TOTALS
-                        polytetSymmetryCount
-                            [symmetry - 1]
-                            [isChiral ? SymmetryType_Chiral : SymmetryType_AchiralNonmirror + mirrorType]++;
+                        polytetSymmetryCount[symmetry - 1][symmetryType]++;
     #endif
     #ifdef PRINT_POLYTETS_WITH_SYMMETRY
         #ifndef PRINT_POLYTETS
@@ -1200,11 +1199,7 @@ void enumerate(
                         {
                             boost::mutex::scoped_lock lock(printPolytetMutex);
 
-                            printf("<%d", symmetry);
-                            if (!isChiral)
-                                printf(", %s", mirrorType ? (mirrorType==1 ? "mirror" : "mirror2") : "achiral");
-                            printf(">\n");
-
+                            printf("<%d%s>\n", symmetry, symmetryTypeString[symmetryType]);
                             printPolytet(runningLeastPolytet[0].value, polytet);
                         }
     #endif // PRINT_POLYTETS_WITH_SYMMETRY
