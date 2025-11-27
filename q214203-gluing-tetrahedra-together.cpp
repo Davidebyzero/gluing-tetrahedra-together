@@ -840,8 +840,8 @@ struct SymmetryRoot
 
 void canonicalizePolytet(Polytet &polytet, int tetCount, SymmetryRoot runningLeastPolytet[2], CompressedPolytet &newRotatedPolytet, bool &isChiral
 #if defined(PRINT_SYMMETRY_TOTALS) || defined(PRINT_POLYTETS_WITH_SYMMETRY)
-    , int &mirrorType // only meaningful if "isChiral" is false
-    , int &symmetry   // number of rotations under which the polytet is identical
+    , SymmetryType &symmetryType
+    , int &symmetry  // number of rotations under which the polytet is identical
 #endif
     )
 {
@@ -923,10 +923,17 @@ void canonicalizePolytet(Polytet &polytet, int tetCount, SymmetryRoot runningLea
     skipThisTet:;
     }
 
-    isChiral = runningLeastPolytet[1].value != runningLeastPolytet[0].value;
-    if (!isChiral)
+    isChiral = runningLeastPolytet[0].value != runningLeastPolytet[1].value;
+    if (isChiral)
     {
+        if (runningLeastPolytet[0].value > runningLeastPolytet[1].value)
+            runningLeastPolytet[0].value = runningLeastPolytet[1].value;
+        symmetryType = SymmetryType_Chiral;
+    }
 #if defined(PRINT_SYMMETRY_TOTALS) || defined(PRINT_POLYTETS_WITH_SYMMETRY)
+    else
+    {
+        int mirrorType;
         if (runningLeastPolytet[0].tetI == runningLeastPolytet[1].tetI)
             mirrorType = 1;
         else
@@ -949,11 +956,11 @@ void canonicalizePolytet(Polytet &polytet, int tetCount, SymmetryRoot runningLea
             mirrorType = 0;
         foundIsMirror:;
         }
-#endif
+        if (mirrorType && (symmetry > 3 || symmetry == 2))
+            mirrorType = 1; // collapse "mirror2" into "mirror" for symmetries that have multiple mirror planes
+        symmetryType = (SymmetryType)(SymmetryType_AchiralNonmirror + mirrorType);
     }
-    else
-    if (runningLeastPolytet[0].value > runningLeastPolytet[1].value)
-        runningLeastPolytet[0].value = runningLeastPolytet[1].value;
+#endif
 }
 
 void enumerate(
@@ -1062,12 +1069,12 @@ void enumerate(
 
                     bool isChiral;
 #if defined(PRINT_SYMMETRY_TOTALS) || defined(PRINT_POLYTETS_WITH_SYMMETRY)
-                    int mirrorType; // only meaningful if "isChiral" is false
+                    SymmetryType symmetryType;
                     int symmetry;
 #endif
                     canonicalizePolytet(polytet, tetCount, runningLeastPolytet, newRotatedPolytet, isChiral
 #if defined(PRINT_SYMMETRY_TOTALS) || defined(PRINT_POLYTETS_WITH_SYMMETRY)
-                        , mirrorType
+                        , symmetryType
                         , symmetry
 #endif
                         );
@@ -1182,29 +1189,20 @@ void enumerate(
 #endif
                         *(HashIndex*)((uint8_t*)entry + newPolytetsCompressedSize) = 0; // pointer to next hash collision
                     }
-#if defined(PRINT_SYMMETRY_TOTALS) || defined(PRINT_POLYTETS_WITH_SYMMETRY)
+#ifdef PRINT_SYMMETRY_TOTALS
+                    polytetSymmetryCount[symmetry - 1][symmetryType]++;
+#endif
+#ifdef PRINT_POLYTETS_WITH_SYMMETRY
+    #ifndef PRINT_POLYTETS
+                    if (!isChiral || symmetry > 1)
+    #endif
                     {
-    #if defined(PRINT_SYMMETRY_TOTALS) || defined(PRINT_POLYTETS_WITH_SYMMETRY)
-                        if (mirrorType && (symmetry > 3 || symmetry == 2))
-                            mirrorType = 1; // collapse "mirror2" into "mirror" for symmetries that have multiple mirror planes
-                        auto symmetryType = isChiral ? SymmetryType_Chiral : SymmetryType_AchiralNonmirror + mirrorType;
-    #endif
-    #ifdef PRINT_SYMMETRY_TOTALS
-                        polytetSymmetryCount[symmetry - 1][symmetryType]++;
-    #endif
-    #ifdef PRINT_POLYTETS_WITH_SYMMETRY
-        #ifndef PRINT_POLYTETS
-                        if (!isChiral || symmetry > 1)
-        #endif
-                        {
-                            boost::mutex::scoped_lock lock(printPolytetMutex);
+                        boost::mutex::scoped_lock lock(printPolytetMutex);
 
-                            printf("<%d%s>\n", symmetry, symmetryTypeString[symmetryType]);
-                            printPolytet(runningLeastPolytet[0].value, polytet);
-                        }
-    #endif // PRINT_POLYTETS_WITH_SYMMETRY
+                        printf("<%d%s>\n", symmetry, symmetryTypeString[symmetryType]);
+                        printPolytet(runningLeastPolytet[0].value, polytet);
                     }
-#endif // defined(PRINT_SYMMETRY_TOTALS) || defined(PRINT_POLYTETS_WITH_SYMMETRY)
+#endif
                 skipDuplicate:
                 skipDueToOverlap:
 
