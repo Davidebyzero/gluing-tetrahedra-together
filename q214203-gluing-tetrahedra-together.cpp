@@ -835,24 +835,20 @@ struct SymmetryRoot
     CompressedPolytetBits value;
 #if defined(PRINT_SYMMETRY_TOTALS) || defined(PRINT_POLYTETS_WITH_SYMMETRY)
     TetIndex tetI;
-    uint8_t rotation;
 #endif
 };
 
 void canonicalizePolytet(Polytet &polytet, int tetCount, SymmetryRoot runningLeastPolytet[2], CompressedPolytet &newRotatedPolytet, bool &isChiral
 #if defined(PRINT_SYMMETRY_TOTALS) || defined(PRINT_POLYTETS_WITH_SYMMETRY)
     , int &mirrorType // only meaningful if "isChiral" is false
-    , SymmetryRoot newRotatedPolytetList    [(MAXIMUM_TETCOUNT + 1) * 3]
-    , SymmetryRoot newRotatedPolytetSym3List[(MAXIMUM_TETCOUNT + 1) / 3]
-    , int &newRotatedPolytetCount
-    , int &newRotatedPolytetSym3Count
+    , int &symmetry   // number of rotations under which the polytet is identical
 #endif
     )
 {
     runningLeastPolytet[1].value = runningLeastPolytet[0].value = COMPRESSEDPOLYTETBITS_MAX;
 #if defined(PRINT_SYMMETRY_TOTALS) || defined(PRINT_POLYTETS_WITH_SYMMETRY)
-    newRotatedPolytetCount     = 0;
-    newRotatedPolytetSym3Count = 0;
+    TetIndex symmetricRootList[MAXIMUM_TETCOUNT * 3];
+    CompressedPolytetBits lastValue = COMPRESSEDPOLYTETBITS_MAX;
 #endif
 
     Tet *t = &polytet[1];
@@ -904,37 +900,24 @@ void canonicalizePolytet(Polytet &polytet, int tetCount, SymmetryRoot runningLea
                 newRotatedPolytet.reflect = reflect;
                 newRotatedPolytet.append(*t, thisRotationTable, rotationStep);
 
-#if defined(PRINT_SYMMETRY_TOTALS) || defined(PRINT_POLYTETS_WITH_SYMMETRY)
-                if (!reflect)
-                {
-                    if (newRotatedPolytetCount && rotationStep == 2 && rotationStepRange[0] != rotationStepRange[1] &&
-                        newRotatedPolytetList[newRotatedPolytetCount - 1].value == newRotatedPolytet.value)
-                    {
-                        newRotatedPolytetCount -= 2;
-                        newRotatedPolytetSym3List[newRotatedPolytetSym3Count].value = newRotatedPolytet.value;
-                        newRotatedPolytetSym3List[newRotatedPolytetSym3Count].tetI = i;
-                        newRotatedPolytetSym3List[newRotatedPolytetSym3Count].rotation = rotationStep;
-                        newRotatedPolytetSym3Count++;
-                    }
-                    else
-                    {
-                        newRotatedPolytetList[newRotatedPolytetCount].value = newRotatedPolytet.value;
-                        newRotatedPolytetList[newRotatedPolytetCount].tetI = i;
-                        newRotatedPolytetList[newRotatedPolytetCount].rotation = rotationStep;
-                        newRotatedPolytetCount++;
-                    }
-                }
-#endif
-
                 // Update the running "least" rotation
                 if (runningLeastPolytet[reflect].value > newRotatedPolytet.value)
                 {
                     runningLeastPolytet[reflect].value = newRotatedPolytet.value;
 #if defined(PRINT_SYMMETRY_TOTALS) || defined(PRINT_POLYTETS_WITH_SYMMETRY)
                     runningLeastPolytet[reflect].tetI = i;
-                    runningLeastPolytet[reflect].rotation = rotationStep;
+                    if (!reflect)
+                    {
+                        symmetricRootList[0] = i;
+                        symmetry = 1;
+                    }
 #endif
                 }
+#if defined(PRINT_SYMMETRY_TOTALS) || defined(PRINT_POLYTETS_WITH_SYMMETRY)
+                else
+                if (!reflect && runningLeastPolytet[0].value == newRotatedPolytet.value)
+                    symmetricRootList[symmetry++] = i;
+#endif
             }
         }
     skipThisTet:;
@@ -960,14 +943,9 @@ void canonicalizePolytet(Polytet &polytet, int tetCount, SymmetryRoot runningLea
                     path0to1 = ((path0to1 - 1) / 3 - 1) / 3;
                 return path0to1 ? 2 : 1;
             };
-            for (int i=0; i<newRotatedPolytetCount; i++)
-                if (newRotatedPolytetList[i].value == runningLeastPolytet[0].value)
-                    if (mirrorType = checkMirror(newRotatedPolytetList[i].tetI); mirrorType)
-                        goto foundIsMirror;
-            for (int i=0; i<newRotatedPolytetSym3Count; i++)
-                if (newRotatedPolytetSym3List[i].value == runningLeastPolytet[0].value)
-                    if (mirrorType = checkMirror(newRotatedPolytetSym3List[i].tetI); mirrorType)
-                        goto foundIsMirror;
+            for (int i=0; i<symmetry; i++)
+                if (mirrorType = checkMirror(symmetricRootList[i]); mirrorType)
+                    goto foundIsMirror;
             mirrorType = 0;
         foundIsMirror:;
         }
@@ -1036,13 +1014,6 @@ void enumerate(
 
     CompressedPolytet newRotatedPolytet(polytet);
 
-#if defined(PRINT_SYMMETRY_TOTALS) || defined(PRINT_POLYTETS_WITH_SYMMETRY)
-    SymmetryRoot newRotatedPolytetList    [(MAXIMUM_TETCOUNT + 1) * 3];
-    SymmetryRoot newRotatedPolytetSym3List[(MAXIMUM_TETCOUNT + 1) / 3];
-    int8_t symmetryList [(MAXIMUM_TETCOUNT + 1) * 3 + 1];
-    int8_t symmetry3List[(MAXIMUM_TETCOUNT + 1) / 3 + 1];
-#endif
-
 #ifdef MULTITHREADING
     for (;;)
 #endif
@@ -1092,15 +1063,12 @@ void enumerate(
                     bool isChiral;
 #if defined(PRINT_SYMMETRY_TOTALS) || defined(PRINT_POLYTETS_WITH_SYMMETRY)
                     int mirrorType; // only meaningful if "isChiral" is false
-                    int newRotatedPolytetCount, newRotatedPolytetSym3Count;
+                    int symmetry;
 #endif
                     canonicalizePolytet(polytet, tetCount, runningLeastPolytet, newRotatedPolytet, isChiral
 #if defined(PRINT_SYMMETRY_TOTALS) || defined(PRINT_POLYTETS_WITH_SYMMETRY)
                         , mirrorType
-                        , newRotatedPolytetList
-                        , newRotatedPolytetSym3List
-                        , newRotatedPolytetCount
-                        , newRotatedPolytetSym3Count
+                        , symmetry
 #endif
                         );
 
@@ -1216,72 +1184,6 @@ void enumerate(
                     }
 #if defined(PRINT_SYMMETRY_TOTALS) || defined(PRINT_POLYTETS_WITH_SYMMETRY)
                     {
-                        const auto sorter = [](const void *a, const void *b) -> int
-                        {
-                            return sign((CompressedPolytetBitsSigned)((SymmetryRoot*)a)->value -
-                                        (CompressedPolytetBitsSigned)((SymmetryRoot*)b)->value);
-                        };
-                        qsort(newRotatedPolytetList    , newRotatedPolytetCount    , sizeof(SymmetryRoot), sorter);
-                        qsort(newRotatedPolytetSym3List, newRotatedPolytetSym3Count, sizeof(SymmetryRoot), sorter);
-
-                        int symmetry = 0;
-
-                        int symmetryCount = 0; symmetryList[0] = newRotatedPolytetCount ? 1 : 0;
-                        bool symmetryIncludesNonUnity = false;
-                        for (int i=0; i<newRotatedPolytetCount-1; i++)
-                        {
-                            if (newRotatedPolytetList[i].value == newRotatedPolytetList[i+1].value)
-                            {
-                                symmetryList[symmetryCount]++;
-                                symmetryIncludesNonUnity = true;
-                            }
-                            else
-                            {
-                                if (!symmetry)
-                                    symmetry = symmetryList[symmetryCount];
-                                else
-                                if (symmetry != symmetryList[symmetryCount])
-                                    printf("WARNING! Nonmatching symmetry found\n");
-                                symmetryCount++;
-                                symmetryList[symmetryCount] = i<newRotatedPolytetCount-1 ? 1 : 0;
-                            }
-                        }
-                        if (symmetryList[symmetryCount])
-                        {
-                            if (!symmetry)
-                                symmetry = symmetryList[symmetryCount];
-                            else
-                            if (symmetry != symmetryList[symmetryCount])
-                                printf("WARNING! Nonmatching symmetry found\n");
-                            symmetryCount++;
-                        }
-
-                        int symmetry3Count = 0; symmetry3List[0] = newRotatedPolytetSym3Count ? 1 : 0;
-                        for (int i=0; i<newRotatedPolytetSym3Count-1; i++)
-                        {
-                            if (newRotatedPolytetSym3List[i].value == newRotatedPolytetSym3List[i+1].value)
-                                symmetry3List[symmetry3Count]++;
-                            else
-                            {
-                                if (!symmetry)
-                                    symmetry = symmetry3List[symmetry3Count] * 3;
-                                else
-                                if (symmetry != symmetry3List[symmetry3Count] * 3)
-                                    printf("WARNING! Nonmatching symmetry found\n");
-                                symmetry3Count++;
-                                symmetry3List[symmetry3Count] = i<newRotatedPolytetSym3Count-1 ? 1 : 0;
-                            }
-                        }
-                        if (symmetry3List[symmetry3Count])
-                        {
-                            if (!symmetry)
-                                symmetry = symmetry3List[symmetry3Count] * 3;
-                            else
-                            if (symmetry != symmetry3List[symmetry3Count] * 3)
-                                printf("WARNING! Nonmatching symmetry found\n");
-                            symmetry3Count++;
-                        }
-
     #if defined(PRINT_SYMMETRY_TOTALS) || defined(PRINT_POLYTETS_WITH_SYMMETRY)
                         if (mirrorType && (symmetry > 3 || symmetry == 2))
                             mirrorType = 1; // collapse "mirror2" into "mirror" for symmetries that have multiple mirror planes
@@ -1293,14 +1195,14 @@ void enumerate(
     #endif
     #ifdef PRINT_POLYTETS_WITH_SYMMETRY
         #ifndef PRINT_POLYTETS
-                        if (!isChiral || symmetryIncludesNonUnity || symmetry3Count)
+                        if (!isChiral || symmetry > 1)
         #endif
                         {
                             boost::mutex::scoped_lock lock(printPolytetMutex);
 
                             printf("<%d", symmetry);
                             if (!isChiral)
-                                printf("%s%s", symmetryCount || symmetry3Count ? ", " : "", mirrorType ? (mirrorType==1 ? "mirror" : "mirror2") : "achiral");
+                                printf(", %s", mirrorType ? (mirrorType==1 ? "mirror" : "mirror2") : "achiral");
                             printf(">\n");
 
                             printPolytet(runningLeastPolytet[0].value, polytet);
