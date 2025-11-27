@@ -933,32 +933,31 @@ void canonicalizePolytet(Polytet &polytet, int tetCount, SymmetryRoot runningLea
 #if defined(PRINT_SYMMETRY_TOTALS) || defined(PRINT_POLYTETS_WITH_SYMMETRY)
     else
     {
-        int mirrorType;
         if (runningLeastPolytet[0].tetI == runningLeastPolytet[1].tetI)
-            mirrorType = 1;
+            symmetryType = SymmetryType_AchiralMirror;
         else
         {
-            auto checkMirror = [&](TetIndex tetI) -> int8_t
+            auto checkMirror = [&](TetIndex tetI) -> SymmetryType
             {
                 polytet[                       tetI].tagSkipOverlapCheck(polytet, 1);
                 CompressedSubpolytet path0to1 =                       (polytet[runningLeastPolytet[1].tetI].compressedPath - 1) / 3;
                 polytet[runningLeastPolytet[1].tetI].tagSkipOverlapCheck(polytet, 1);
                 CompressedSubpolytet path1to0 = reflectCompressedPath((polytet[                       tetI].compressedPath - 1) / 3);
                 if (path1to0 != path0to1)
-                    return 0;
+                    return SymmetryType_AchiralNonmirror;
                 while (path0to1 > 3)
                     path0to1 = ((path0to1 - 1) / 3 - 1) / 3;
-                return path0to1 ? 2 : 1;
+                return path0to1 ? SymmetryType_AchiralMirrorFace : SymmetryType_AchiralMirror;
             };
             for (int i=0; i<symmetry; i++)
-                if (mirrorType = checkMirror(symmetricRootList[i]); mirrorType)
+                if (symmetryType = checkMirror(symmetricRootList[i]); symmetryType > SymmetryType_AchiralNonmirror)
                     goto foundIsMirror;
-            mirrorType = 0;
+            symmetryType = SymmetryType_AchiralNonmirror;
+            return;
         foundIsMirror:;
+            if (symmetryType > SymmetryType_AchiralMirror && (symmetry > 3 || symmetry == 2))
+                symmetryType = SymmetryType_AchiralMirror; // collapse "mirror2" into "mirror" for symmetries that have multiple mirror planes
         }
-        if (mirrorType && (symmetry > 3 || symmetry == 2))
-            mirrorType = 1; // collapse "mirror2" into "mirror" for symmetries that have multiple mirror planes
-        symmetryType = (SymmetryType)(SymmetryType_AchiralNonmirror + mirrorType);
     }
 #endif
 }
