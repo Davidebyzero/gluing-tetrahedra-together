@@ -955,7 +955,7 @@ void canonicalizePolytet(Polytet &polytet, int tetCount, SymmetryRoot runningLea
             symmetryType = SymmetryType_AchiralNonmirror;
             return;
         foundIsMirror:;
-            if (symmetryType > SymmetryType_AchiralMirror && (symmetry > 3 || symmetry == 2))
+            if (symmetryType > SymmetryType_AchiralMirror && (symmetry == 2 || symmetry > 3))
                 symmetryType = SymmetryType_AchiralMirror; // collapse "mirror2" into "mirror" for symmetries that have multiple mirror planes
         }
     }
