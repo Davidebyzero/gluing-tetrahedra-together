@@ -1264,7 +1264,7 @@ int main(int argc, char *argv[])
     {
         int tetCount = 17;
 
-        for (int i=3; i<tetCount+1; i++)
+        for (int i=3; i<tetCount+2; i++)
             mul_start_3(start, maximalTouchingSqrDistance, minUnseenCompressedSubpolytet);
         Polytet polytet;
         polytet[0].init();
@@ -1300,6 +1300,30 @@ int main(int argc, char *argv[])
             }
         notSinglyAttached:;
         }
+        attachNewTet(polytet, tetCount++, 17, 1);
+        attachNewTet(polytet, tetCount++, 18, 0);
+        attachNewTet(polytet, tetCount++, 19, 0);
+        attachNewTet(polytet, tetCount++, 20, 1);
+        attachNewTet(polytet, tetCount++, 21, 0);
+        attachNewTet(polytet, tetCount++, 22, 1);
+        attachNewTet(polytet, tetCount++, 23, 0);
+        attachNewTet(polytet, tetCount++, 24, 1);
+        attachNewTet(polytet, tetCount++, 25, 0);
+        attachNewTet(polytet, tetCount++, 26, 1);
+        attachNewTet(polytet, tetCount++, 27, 0);
+        attachNewTet(polytet, tetCount++, 28, 1);
+        attachNewTet(polytet, tetCount++, 29, 0);
+        attachNewTet(polytet, tetCount++, 30, 1);
+        attachNewTet(polytet, tetCount++, 31, 0);
+        attachNewTet(polytet, tetCount++, 32, 1);
+        attachNewTet(polytet, tetCount++, 33, 0);
+        attachNewTet(polytet, tetCount++, 34, 1);
+        attachNewTet(polytet, tetCount++, 35, 0);
+        attachNewTet(polytet, tetCount++, 36, 1);
+        attachNewTet(polytet, tetCount++, 37, 1);
+        attachNewTet(polytet, tetCount++, 38, 0);
+        attachNewTet(polytet, tetCount++, 39, 0);
+        attachNewTet(polytet, tetCount++, 40, 1);
         polytet.setSize(tetCount);
 
         SymmetryRoot runningLeastPolytet[2];
