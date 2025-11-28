@@ -52,7 +52,7 @@ typedef  int64_t          CompressedPolytetBitsSigned;
 #define COMPRESSEDPOLYTETBITS_MAX UINT64_MAX
 #endif
 
-typedef uint64_t CompressedSubpolytet; // compressed in branchless format; for caching known-overlapping subpolytet paths
+typedef uint64_t CompressedSubpolytet; // compressed in branchless format, in bijective trinary; for caching known-overlapping subpolytet paths
 
 #ifdef USE_GMP
 class Tetrahedron
@@ -1257,7 +1257,8 @@ int main(int argc, char *argv[])
 #endif
 
     CompressedSubpolytet minUnseenCompressedSubpolytet = 0;
-    bool *overlapCache; // A bitmap (packed booleans) was tried, and was a bit slower; so, we'll use 8 times as much RAM to get slightly better speed
+    bool *overlapCache; // A bitmap (packed booleans) was tried, and was a bit slower; so, we'll use 8 times as much RAM to get slightly better speed.
+                        // The array indices are branchless polytet attachment paths in bijective trinary, with 1 subtracted.
     {
         size_t overlapCacheSize = 0;
         for (int i=0; i<MAXIMUM_TETCOUNT-2; i++)
