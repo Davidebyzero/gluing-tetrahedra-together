@@ -924,7 +924,9 @@ void canonicalizePolytet(Polytet &polytet, int tetCount, SymmetryRoot runningLea
     {
         if (runningLeastPolytet[0].value > runningLeastPolytet[1].value)
             runningLeastPolytet[0].value = runningLeastPolytet[1].value;
+#if defined(PRINT_SYMMETRY_TOTALS) || defined(PRINT_POLYTETS_WITH_SYMMETRY)
         symmetryType = SymmetryType_Chiral;
+#endif
     }
 #if defined(PRINT_SYMMETRY_TOTALS) || defined(PRINT_POLYTETS_WITH_SYMMETRY)
     else
