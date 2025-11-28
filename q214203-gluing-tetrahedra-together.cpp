@@ -306,12 +306,10 @@ public:
             {
                 const mpz_t *p0 = a->t.t[tetrahedronEdges[edgeNum][0]];
                 const mpz_t *p1 = a->t.t[tetrahedronEdges[edgeNum][1]];
-                for (int faceNum=0; faceNum<4; faceNum++)
+                // Since it's guaranteed that due to the overlapCache, both tetrahedrons are single-attached end pieces, and all
+                // collisions with nearer pieces are already cached, we can safely skip face[3]
+                for (int faceNum=0; faceNum<3; faceNum++)
                 {
-                    // Since it's guaranteed that due to the overlapCache, both tetrahedrons are single-attached end pieces, and all
-                    // collisions with nearer pieces are already cached, we can safely skip face[3]
-                    if (faceNum==3)
-                        continue;
                     const mpz_t *normalizedTetrahedron[4][3]; // first 3 points are the face, and the 4th point is for calculating the normal
                     for (int d=0; d<3; d++)
                     {
@@ -429,12 +427,10 @@ public:
             {
                 Coord3 p0 = a->t[tetrahedronEdges[edgeNum][0]];
                 Coord3 p1 = a->t[tetrahedronEdges[edgeNum][1]];
-                for (int faceNum=0; faceNum<4; faceNum++)
+                // Since it's guaranteed that due to the overlapCache, both tetrahedrons are single-attached end pieces, and all
+                // collisions with nearer pieces are already cached, we can safely skip face[3]
+                for (int faceNum=0; faceNum<3; faceNum++)
                 {
-                    // Since it's guaranteed that due to the overlapCache, both tetrahedrons are single-attached end pieces, and all
-                    // collisions with nearer pieces are already cached, we can safely skip face[3]
-                    if (faceNum==3)
-                        continue;
                     Tetrahedron normalizedTetrahedron; // first 3 points are the face, and the 4th point is for calculating the normal
                     for (int i=0; i<4; i++)
                         normalizedTetrahedron[i] = b->t[tetrahedronFaces[faceNum][i]];
