@@ -1253,6 +1253,76 @@ int main(int argc, char *argv[])
 #endif
 
     CompressedSubpolytet minUnseenCompressedSubpolytet = 0;
+#if 1
+#if MAXIMUM_TETCOUNT < 29
+#   error Insufficient MAXIMUM_TETCOUNT
+#endif
+    {
+        const int tetCount = 29;
+
+        for (int i=3; i<tetCount; i++)
+            mul_start_3(start, maximalTouchingSqrDistance, minUnseenCompressedSubpolytet);
+        Polytet polytet;
+        polytet[0].init();
+        polytet[0].t = start;
+        attachNewTet(polytet, 1, 0, 3);
+        polytet.setSize(17 + 1);
+        CompressedPolytet newRotatedPolytet(polytet);
+        newRotatedPolytet.value = 0x1C01C01FFuLL;
+        newRotatedPolytet.uncompress();
+
+        attachNewTet(polytet, 17, 16, 2);
+        attachNewTet(polytet, 18, 15, 0);
+        attachNewTet(polytet, 19, 14, 1);
+        attachNewTet(polytet, 20, 13, 1);
+        attachNewTet(polytet, 21, 12, 1);
+        attachNewTet(polytet, 22, 10, 1);
+        attachNewTet(polytet, 23,  9, 1);
+        attachNewTet(polytet, 24,  8, 1);
+        attachNewTet(polytet, 25,  6, 1);
+        attachNewTet(polytet, 26,  5, 1);
+        attachNewTet(polytet, 27,  4, 1);
+        attachNewTet(polytet, 28,  0, 0);
+        polytet.setSize(tetCount);
+        /*for (int i=0; i<28; i++)
+        {
+            for (int j=0; j<3; j++)
+                if (polytet[i].faceAttached[j] >= 0)
+                    goto notSinglyAttached;
+            printf("singly attached: %d\n", i);
+        notSinglyAttached:;
+        }*/
+
+        SymmetryRoot runningLeastPolytet[2];
+        bool isChiral;
+#if defined(PRINT_SYMMETRY_TOTALS) || defined(PRINT_POLYTETS_WITH_SYMMETRY)
+        SymmetryType symmetryType;
+        int symmetry;
+#endif
+        canonicalizePolytet(polytet, tetCount, runningLeastPolytet, newRotatedPolytet, isChiral
+#if defined(PRINT_SYMMETRY_TOTALS) || defined(PRINT_POLYTETS_WITH_SYMMETRY)
+            , symmetryType
+            , symmetry
+#endif
+            );
+        char prefix[100], suffix[100];
+        sprintf(prefix, "\"name\": \"%d-cell Polytet ", tetCount);
+        sprintf(suffix, " <%d%s>\",\n\"vertices\": [\n", symmetry, symmetryTypeString[symmetryType]);
+        printPolytet(runningLeastPolytet[0].value, polytet, prefix, suffix, false, "[", "]");
+        std::cout << "],\n" << "\"faces\": [\n";
+        for (int i=0; i<tetCount; i++)
+        {
+            int z = i*4;
+            printf("[%d,%d,%d],[%d,%d,%d],[%d,%d,%d],[%d,%d,%d]%s\n",
+                z+0, z+1, z+2,
+                z+0, z+3, z+1,
+                z+0, z+2, z+3,
+                z+1, z+3, z+2, i<tetCount-1 ? "," : "");
+        }
+        std::cout << "]" << std::endl;
+        return 0;
+    }
+#endif
     bool *overlapCache; // A bitmap (packed booleans) was tried, and was a bit slower; so, we'll use 8 times as much RAM to get slightly better speed.
                         // The array indices are branchless polytet attachment paths in bijective trinary, with 1 subtracted.
     {
