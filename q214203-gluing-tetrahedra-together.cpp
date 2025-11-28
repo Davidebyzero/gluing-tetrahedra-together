@@ -1258,13 +1258,13 @@ int main(int argc, char *argv[])
 
     CompressedSubpolytet minUnseenCompressedSubpolytet = 0;
 #if 1
-#if MAXIMUM_TETCOUNT < 29
+#if MAXIMUM_TETCOUNT < 41
 #   error Insufficient MAXIMUM_TETCOUNT
 #endif
     {
-        const int tetCount = 29;
+        int tetCount = 17;
 
-        for (int i=3; i<tetCount; i++)
+        for (int i=3; i<tetCount+1; i++)
             mul_start_3(start, maximalTouchingSqrDistance, minUnseenCompressedSubpolytet);
         Polytet polytet;
         polytet[0].init();
@@ -1275,27 +1275,32 @@ int main(int argc, char *argv[])
         newRotatedPolytet.value = 0x1C01C01FFuLL;
         newRotatedPolytet.uncompress();
 
-        attachNewTet(polytet, 17, 16, 2);
-        attachNewTet(polytet, 18, 15, 0);
-        attachNewTet(polytet, 19, 14, 1);
-        attachNewTet(polytet, 20, 13, 1);
-        attachNewTet(polytet, 21, 12, 1);
-        attachNewTet(polytet, 22, 10, 1);
-        attachNewTet(polytet, 23,  9, 1);
-        attachNewTet(polytet, 24,  8, 1);
-        attachNewTet(polytet, 25,  6, 1);
-        attachNewTet(polytet, 26,  5, 1);
-        attachNewTet(polytet, 27,  4, 1);
-        attachNewTet(polytet, 28,  0, 0);
-        polytet.setSize(tetCount);
-        /*for (int i=0; i<28; i++)
+        TetrahedronOverlap overlap;
+        for (int i=0; i<17; i++)
         {
             for (int j=0; j<3; j++)
                 if (polytet[i].faceAttached[j] >= 0)
                     goto notSinglyAttached;
             printf("singly attached: %d\n", i);
+
+            for (int faceNum=0; faceNum<3; faceNum++)
+            {
+                attachNewTet(polytet, tetCount++, i, faceNum);
+                overlap.setA(polytet[tetCount-1]);
+                for (int tetCheckIntersectionI=0; tetCheckIntersectionI<polytet.size(); tetCheckIntersectionI++)
+                {
+                    overlap.setB(polytet[tetCheckIntersectionI]);
+                    if (overlap(maximalTouchingSqrDistance))
+                    {
+                        tetCount--;
+                        polytet[i].faceAttached[faceNum] = -1;
+                        break;
+                    }
+                }
+            }
         notSinglyAttached:;
-        }*/
+        }
+        polytet.setSize(tetCount);
 
         SymmetryRoot runningLeastPolytet[2];
         bool isChiral;
