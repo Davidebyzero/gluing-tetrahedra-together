@@ -36,7 +36,7 @@ void quitMemory()
 
 typedef int TetIndex;
 
-#if MAXIMUM_TETCOUNT > 17
+#if 0//MAXIMUM_TETCOUNT > 17
 typedef uint64_t HashIndex;
 #else
 typedef uint32_t HashIndex;
@@ -1076,6 +1076,9 @@ void enumerate(
 #endif
                         );
 
+if (tetCount % 4 == 1 && isChiral && symmetry == 1)
+    goto skipDuplicate;
+{
                     size_t hashIndex = hash(runningLeastPolytet[0].value) % hashTableSize;
                     HashIndex *index = &hashTable[hashIndex];
 #ifdef MULTITHREADING
@@ -1200,6 +1203,7 @@ void enumerate(
                         printPolytet(runningLeastPolytet[0].value, polytet);
                     }
 #endif
+}
                 skipDuplicate:
                 skipDueToOverlap:
 
@@ -1428,11 +1432,11 @@ int main(int argc, char *argv[])
 #ifdef PRINT_POLYTETS_WITH_SYMMETRY
         for (int i=0; i<120; i++) putchar('-'); putchar('\n');
 #endif
-        if (prevPolytetCount > polytetCount)
+        /*if (prevPolytetCount > polytetCount)
         {
             std::cerr << "Quit due to apparent overflow" << std::endl;
             break;
-        }
+        }*/
         prevPolytetCount = polytetCount;
         if (++tetCount <= 2)
             continue;
