@@ -974,7 +974,7 @@ void enumerate(
     const Coord maximalTouchingSqrDistance,
 #endif
 
-    bool *overlapCache,
+    int8_t *overlapCache,
     bool &foundOverlaps,
 
     const int tetCount,
@@ -1076,8 +1076,7 @@ void enumerate(
 #endif
                         );
 
-if (tetCount % 4 == 1 && isChiral && symmetry == 1)
-    goto skipDuplicate;
+if (!(tetCount % 4 == 1 && isChiral && symmetry == 1))
 {
                     size_t hashIndex = hash(runningLeastPolytet[0].value) % hashTableSize;
                     HashIndex *index = &hashTable[hashIndex];
@@ -1109,7 +1108,11 @@ if (tetCount % 4 == 1 && isChiral && symmetry == 1)
                         if (polytet[tetCheckIntersectionI].compressedPath == UINT64_MAX)
                             continue; // skip this check for speed (it'll always be false anyway)
                         CompressedSubpolytet compressedPath = (polytet[tetCheckIntersectionI].compressedPath - 1) / 3;
-                        if (compressedPath >= minUnseenCompressedSubpolytet)
+                        if (compressedPath == 0)
+                            ;
+                        else
+                        //if (compressedPath >= minUnseenCompressedSubpolytet)
+                        if (overlapCache[compressedPath - 1] == 0)
                         {
                             overlap.setB(polytet[tetCheckIntersectionI]);
                             if (auto overlapResult = overlap(maximalTouchingSqrDistance))
@@ -1121,15 +1124,20 @@ if (tetCount % 4 == 1 && isChiral && symmetry == 1)
                                     printPolytet(runningLeastPolytet[0].value, polytet);
                                 }
 #   endif
-                                overlapCache[                      compressedPath  - 1] = true;
-                                overlapCache[reflectCompressedPath(compressedPath) - 1] = true;
+                                overlapCache[                      compressedPath  - 1] = 1;
+                                overlapCache[reflectCompressedPath(compressedPath) - 1] = 1;
                                 foundOverlaps = true;
                                 goto skipDueToOverlap;
+                            }
+                            else
+                            {
+                                overlapCache[                      compressedPath  - 1] = -1;
+                                overlapCache[reflectCompressedPath(compressedPath) - 1] = -1;
                             }
                         }
                         else
                         {
-                            if (overlapCache[compressedPath - 1])
+                            if (overlapCache[compressedPath - 1] > 0)
                             {
                                 foundOverlaps = true;
                                 goto skipDueToOverlap;
@@ -1194,7 +1202,7 @@ if (tetCount % 4 == 1 && isChiral && symmetry == 1)
 #endif
 #ifdef PRINT_POLYTETS_WITH_SYMMETRY
     #ifndef PRINT_POLYTETS
-                    if (!isChiral || symmetry > 1)
+                    if (symmetry >= 4)
     #endif
                     {
                         boost::mutex::scoped_lock lock(printPolytetMutex);
@@ -1259,13 +1267,13 @@ int main(int argc, char *argv[])
 #endif
 
     CompressedSubpolytet minUnseenCompressedSubpolytet = 0;
-    bool *overlapCache; // A bitmap (packed booleans) was tried, and was a bit slower; so, we'll use 8 times as much RAM to get slightly better speed.
-                        // The array indices are branchless polytet attachment paths in bijective trinary, with 1 subtracted.
+    int8_t *overlapCache; // A bitmap (packed booleans) was tried, and was a bit slower; so, we'll use 8 times as much RAM to get slightly better speed.
+                          // The array indices are branchless polytet attachment paths in bijective trinary, with 1 subtracted.
     {
         size_t overlapCacheSize = 0;
         for (int i=0; i<MAXIMUM_TETCOUNT-2; i++)
             overlapCacheSize = overlapCacheSize * 3 + 1;
-        overlapCache = (bool*)calloc(overlapCacheSize, 1);
+        overlapCache = (int8_t*)calloc(overlapCacheSize, 1);
         std::cout << "Allocated " << overlapCacheSize << " bytes for overlap caching" << std::endl;
     }
 
@@ -1332,7 +1340,7 @@ int main(int argc, char *argv[])
             // Reconstruct minOverlapDepth from loaded file
             CompressedSubpolytet minOverlapCompressedSubpolytet = 0;
             for (; minOverlapCompressedSubpolytet < minUnseenCompressedSubpolytet; minOverlapCompressedSubpolytet++)
-                if (overlapCache[minOverlapCompressedSubpolytet])
+                if (overlapCache[minOverlapCompressedSubpolytet] > 0)
                     break;
             minOverlapDepth = 1;
             while (minOverlapCompressedSubpolytet)
