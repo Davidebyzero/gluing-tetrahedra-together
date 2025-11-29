@@ -1076,7 +1076,7 @@ void enumerate(
 #endif
                         );
 
-if (!(tetCount % 4 == 1 && isChiral && symmetry == 1))
+if (!(tetCount % 6 == 2 && isChiral && symmetry == 1))
 {
                     size_t hashIndex = hash(runningLeastPolytet[0].value) % hashTableSize;
                     HashIndex *index = &hashTable[hashIndex];
@@ -1202,7 +1202,7 @@ if (!(tetCount % 4 == 1 && isChiral && symmetry == 1))
 #endif
 #ifdef PRINT_POLYTETS_WITH_SYMMETRY
     #ifndef PRINT_POLYTETS
-                    if (symmetry >= 4)
+                    if (symmetry >= 3)
     #endif
                     {
                         boost::mutex::scoped_lock lock(printPolytetMutex);
