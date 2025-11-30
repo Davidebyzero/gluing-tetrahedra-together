@@ -1325,7 +1325,7 @@ int main(int argc, char *argv[])
 
     // Precompute overlapCache
     {
-        for (int i=4; i<MAXIMUM_TETCOUNT; i+=2)
+        for (int i=5; i<MAXIMUM_TETCOUNT; i+=2)
             mul_start_3(start, maximalTouchingSqrDistance, minUnseenCompressedSubpolytet);
         Polytet polytet;
         polytet.init(start);
