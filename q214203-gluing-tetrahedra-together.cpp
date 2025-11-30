@@ -1113,39 +1113,16 @@ void enumerate(
 #ifndef DISABLE_OVERLAP_CHECKING
                     // Check for overlap between this newly attached tetrahedron and the existing ones,
                     // and defer this until after the deduplication, to save a lot of time
-                    overlap.setA(newTet);
-                    // Set up the "skipOverlapCheck" flags to skip overlap checking up to a depth of 5
                     newTet.tagSkipOverlapCheck(polytet, minOverlapDepth);
                     for (int tetCheckIntersectionI=0; tetCheckIntersectionI<polytet.size(); tetCheckIntersectionI++)
                     {
                         if (polytet[tetCheckIntersectionI].compressedPath == UINT64_MAX)
                             continue; // skip this check for speed (it'll always be false anyway)
                         CompressedSubpolytet compressedPath = (polytet[tetCheckIntersectionI].compressedPath - 1) / 3;
-                        if (compressedPath >= minUnseenCompressedSubpolytet)
+                        if (compressedPath >= 1 && overlapCache[compressedPath - 1])
                         {
-                            overlap.setB(polytet[tetCheckIntersectionI]);
-                            if (auto overlapResult = overlap(maximalTouchingSqrDistance))
-                            {
-#   ifdef PRINT_POLYTETS_EDGE_CASES
-                                if (overlapResult < 0)
-                                {
-                                    boost::mutex::scoped_lock lock(printPolytetMutex);
-                                    printPolytet(runningLeastPolytet[0].value, polytet);
-                                }
-#   endif
-                                overlapCache[                      compressedPath  - 1] = true;
-                                overlapCache[reflectCompressedPath(compressedPath) - 1] = true;
-                                foundOverlaps = true;
-                                goto skipDueToOverlap;
-                            }
-                        }
-                        else
-                        {
-                            if (overlapCache[compressedPath - 1])
-                            {
-                                foundOverlaps = true;
-                                goto skipDueToOverlap;
-                            }
+                            foundOverlaps = true;
+                            goto skipDueToOverlap;
                         }
                     }
 #endif // DISABLE_OVERLAP_CHECKING
@@ -1360,6 +1337,73 @@ int main(int argc, char *argv[])
     {
         pool = malloc(poolSize = MEMORY_POOL_INITIAL_SIZE);
         if (!pool) quitMemory();
+    }
+
+    // Populate overlapCache
+    {
+        for (int i=4; i<MAXIMUM_TETCOUNT; i+=2)
+            mul_start_3(start, maximalTouchingSqrDistance, minUnseenCompressedSubpolytet);
+        Polytet polytet;
+        polytet.init(start);
+        int tetCount = 2, topCount = 1, bottomCount = 1;
+        int8_t faceNumStack[MAXIMUM_TETCOUNT];
+        int stackPos = 0;
+        faceNumStack[0] = 0;
+        TetrahedronOverlap overlap;
+
+        for (;;)
+        {
+            if (tetCount == MAXIMUM_TETCOUNT || faceNumStack[stackPos] == 3)
+            {
+                if (tetCount > 5)
+                {
+                    Tet  &newEndTet = polytet[tetCount - 1];
+                    Tet &prevEndTet = polytet[tetCount - 2];
+                    newEndTet.tagSkipOverlapCheck(polytet, 5);
+                    CompressedSubpolytet compressedPath = (prevEndTet.compressedPath - 1) / 3;
+                    overlap.setA( newEndTet);
+                    overlap.setB(prevEndTet);
+                    if (overlap(maximalTouchingSqrDistance))
+                    {
+                        overlapCache[compressedPath - 1] = true;
+#if 0
+                        int i;
+                        /*for (i=0; i<stackPos; i++) printf("%d", faceNumStack[i]);
+                        printf(" = ");*/
+                        for (i = stackPos - 1; i>=0; i-=2) printf("%d", faceNumStack[i]);
+                        i = stackPos & 1;
+                        for (; i<stackPos; i+=2) printf("%d", faceNumStack[i]);
+                        printf(", ");
+                        int64_t blah = compressedPath;
+                        while (blah)
+                        {
+                            blah--;
+                            printf("%u", blah % 3);
+                            blah /= 3;
+                        }
+                        printf(", 0x%llX = %d\n", compressedPath - 1, overlapCache[compressedPath - 1]);
+#endif
+                    }
+                }
+                if (--stackPos < 0)
+                    break;
+                if (bottomCount > topCount) bottomCount--;
+                else                           topCount--;
+                tetCount--;
+                polytet[tetCount - 2].faceAttached[faceNumStack[stackPos]] = -1;
+                polytet[tetCount - 2].isLeaf = true;
+                faceNumStack[stackPos]++;
+            }
+            else
+            {
+                bool attachToTop = bottomCount > topCount;
+                int iAttachTo = tetCount - 2;
+                if (attachToTop)    topCount++;
+                else             bottomCount++;
+                attachNewTet(polytet, tetCount++, iAttachTo, faceNumStack[stackPos]);
+                faceNumStack[++stackPos] = 0;
+            }
+        }
     }
 
 #ifdef MULTITHREADING

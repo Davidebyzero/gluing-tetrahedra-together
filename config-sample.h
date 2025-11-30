@@ -1,6 +1,6 @@
 // Copy this file to "config.h" and edit as needed
 
-#define USE_GMP
+//#define USE_GMP
 #define MEMORY_POOL_INITIAL_SIZE (64uLL * 1024)  // in bytes; if the goal is to use more than half of available RAM, this must be preallocated at full expected size
 #define MEMORY_POOL_GROW_RATIO 1/16  // what proportion of the memory size to grow it by when more space is needed
 #define HASH_TABLE_RATIO 6
