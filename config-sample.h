@@ -21,5 +21,5 @@
 // MULTITHREADING will enable threading and synchronization code. Note that with this enabled, MEMORY_POOL_INITIAL_SIZE needs to be fully preallocated (it won't grow on demand).
 //#define MULTITHREADING
 #define WORKER_THREADS 16
-#define MAXIMUM_WORK_ASSIGNMENT 1024
-#define HASH_TABLE_SHARDS 256
+#define MAXIMUM_WORK_ASSIGNMENT 512
+#define HASH_TABLE_SHARDS 512
