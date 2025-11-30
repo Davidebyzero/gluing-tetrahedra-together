@@ -819,7 +819,6 @@ void mul_start_3(Tetrahedron &start, Coord &maximalTouchingSqrDistance)
     {
 #endif // MULTITHREADING
         Polytet workerPolytet;
-        TetrahedronOverlap workerOverlap;
 #ifdef MULTITHREADING
     };
     static WorkerJob workerJobs[WORKER_THREADS];
@@ -1029,8 +1028,6 @@ void enumerate(
     size_t nextProgressOutput = tetCount < SHOW_PROGRESS ? UINT64_MAX : 0;
     size_t progressOutputInterval = polytetCount / 1000;
 #endif
-
-    TetrahedronOverlap &overlap = LOCAL_STORAGE(workerOverlap);
 
     Polytet &polytet = LOCAL_STORAGE(workerPolytet);
     polytet.init(start);
