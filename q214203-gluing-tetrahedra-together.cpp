@@ -1347,7 +1347,29 @@ int main(int argc, char *argv[])
                         overlap.setB(prevEndTet);
                         foundOverlap = overlap(maximalTouchingSqrDistance);
                         if (foundOverlap)
+                        {
+#ifdef PRINT_POLYTETS_EDGE_CASES
+                            if (foundOverlap < 0)
+                            {
+                                SymmetryRoot runningLeastPolytet[2];
+                                bool isChiral;
+    #if defined(PRINT_SYMMETRY_TOTALS) || defined(PRINT_POLYTETS_WITH_SYMMETRY)
+                                SymmetryType symmetryType;
+                                int symmetry;
+    #endif
+                                polytet.setSize(tetCount);
+                                CompressedPolytet newRotatedPolytet(polytet);
+                                canonicalizePolytet(polytet, tetCount, runningLeastPolytet, newRotatedPolytet, isChiral
+    #if defined(PRINT_SYMMETRY_TOTALS) || defined(PRINT_POLYTETS_WITH_SYMMETRY)
+                                    , symmetryType
+                                    , symmetry
+    #endif
+                                    );
+                                printPolytet(runningLeastPolytet[0].value, polytet);
+                            }
+#endif
                             overlapCache[compressedPath - 1] = 1;
+                        }
                         else
                             overlapCache[compressedPath - 1] = -1;
                     }
