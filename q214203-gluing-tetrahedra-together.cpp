@@ -578,11 +578,11 @@ class CompressedPolytet
         }
     }
 public:
-    CompressedPolytetBits value;
+    CompressedPolytetBits value, runningLeastValue;
     Polytet &polytet;
     int reflect;
     CompressedPolytet(Polytet &_polytet) : polytet(_polytet), value(0) {}
-    void append(Tet &tetToCompress, const RotationTable *thisRotationTable, int faceRotation)
+    bool append(Tet &tetToCompress, const RotationTable *thisRotationTable, int faceRotation)
     // indices of vertexMap[] are compressed-output vertices; elements of vertexMap[] are the original vertices of tetToCompress
     {
         tetToCompress.assignIndex(polytet.nextIndex);
@@ -599,11 +599,15 @@ public:
             Tet *attachedTet = &polytet[tetToCompress.faceAttached[faceNum]];
             attachedTet->assignIndex(polytet.nextIndex);
             value |= (CompressedPolytetBits)1 << ((tetToCompress.index - 1 - 1) * 3 + _faceNum);
+            if (value > runningLeastValue)
+                return false;
 
             int attachedFace = tetToCompress.faceAttachedFace[faceNum];
             int rotation = thisRotationTable->rotation[rotatedFaceNum];
-            append(*attachedTet, &rotationTable[attachedFace], rotation);
+            if (!append(*attachedTet, &rotationTable[attachedFace], rotation))
+                return false;
         }
+        return true;
     }
     void uncompress()
     {
@@ -889,17 +893,19 @@ void canonicalizePolytet(Polytet &polytet, int tetCount, SymmetryRoot runningLea
         }
         for (int reflect=0; reflect<2; reflect++, rotationStepRange+=2)
         {
+            newRotatedPolytet.runningLeastValue = runningLeastPolytet[reflect].value;
             for (uint8_t rotationStep=rotationStepRange[0]; rotationStep<=rotationStepRange[1]; rotationStep++)
             {
                 polytet.resetIndexing(i);
                 newRotatedPolytet.value = 0;
                 newRotatedPolytet.reflect = reflect;
-                newRotatedPolytet.append(*t, thisRotationTable, rotationStep);
+                if (!newRotatedPolytet.append(*t, thisRotationTable, rotationStep))
+                    continue;
 
                 // Update the running "least" rotation
-                if (runningLeastPolytet[reflect].value > newRotatedPolytet.value)
+                if (newRotatedPolytet.runningLeastValue > newRotatedPolytet.value)
                 {
-                    runningLeastPolytet[reflect].value = newRotatedPolytet.value;
+                    newRotatedPolytet.runningLeastValue = newRotatedPolytet.value;
 #if defined(PRINT_SYMMETRY_TOTALS) || defined(PRINT_POLYTETS_WITH_SYMMETRY)
                     runningLeastPolytet[reflect].tetI = i;
                     if (!reflect)
@@ -911,10 +917,11 @@ void canonicalizePolytet(Polytet &polytet, int tetCount, SymmetryRoot runningLea
                 }
 #if defined(PRINT_SYMMETRY_TOTALS) || defined(PRINT_POLYTETS_WITH_SYMMETRY)
                 else
-                if (!reflect && runningLeastPolytet[0].value == newRotatedPolytet.value)
+                if (!reflect && newRotatedPolytet.runningLeastValue == newRotatedPolytet.value)
                     symmetricRootList[symmetry++] = i;
 #endif
             }
+            runningLeastPolytet[reflect].value = newRotatedPolytet.runningLeastValue;
         }
     skipThisTet:;
     }
