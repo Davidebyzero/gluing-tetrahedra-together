@@ -1349,6 +1349,7 @@ int main(int argc, char *argv[])
                     foundOverlap = overlapCache[compressedPath - 1];
                     if (foundOverlap == 0)
                     {
+                        auto reflectedCompressedPath = reflectCompressedPath(compressedPath);
                         overlap.setA( newEndTet);
                         overlap.setB(prevEndTet);
                         foundOverlap = overlap(maximalTouchingSqrDistance);
@@ -1374,10 +1375,14 @@ int main(int argc, char *argv[])
                                 printPolytet(runningLeastPolytet[0].value, polytet);
                             }
 #endif
-                            overlapCache[compressedPath - 1] = 1;
+                            overlapCache[         compressedPath - 1] = 1;
+                            overlapCache[reflectedCompressedPath - 1] = 1;
                         }
                         else
-                            overlapCache[compressedPath - 1] = -1;
+                        {
+                            overlapCache[         compressedPath - 1] = -1;
+                            overlapCache[reflectedCompressedPath - 1] = -1;
+                        }
                     }
                 }
                 if (foundOverlap)
