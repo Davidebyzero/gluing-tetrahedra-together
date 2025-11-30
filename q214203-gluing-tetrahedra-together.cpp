@@ -5,6 +5,7 @@
 #include <iostream>
 #include <string.h>
 #include <array>
+#include <inttypes.h>
 #include <chrono>
 #include "config.h"
 
@@ -680,9 +681,9 @@ void printPolytet(CompressedPolytetBits value, Polytet &polytet,
 {
     std::cout << valuePrefix;
 #if MAXIMUM_TETCOUNT > 23
-    printf("0x%llX%08llX", ((uint64_t*)&value)[1], ((uint64_t*)&value)[0]);
+    printf("0x%" PRIX64 "%08" PRIX64, ((uint64_t*)&value)[1], ((uint64_t*)&value)[0]);
 #else
-    printf("0x%llX", value);
+    printf("0x%" PRIX64, value);
 #endif
     std::cout << valueSuffix;
     bool first = true;
