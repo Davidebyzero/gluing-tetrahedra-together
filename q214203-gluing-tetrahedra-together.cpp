@@ -697,7 +697,7 @@ void printPolytet(CompressedPolytetBits value, Polytet &polytet,
         mpz_div_ui(printCenter[d], printCenter[d], polytet.size() * 4);
     for (int i=0; i<polytet.size(); i++)
     {
-        printf(first ? (nestedParens ? openParen : "") : ",\n");
+        fputs(first ? (nestedParens ? openParen : "") : ",\n", stdout);
         first = false;
         if (nestedParens) std::cout << openParen;
         for (int p=0; p<4; p++)
