@@ -425,21 +425,21 @@ public:
             if (dot(center, center) >= maximalTouchingSqrDistance)
                 return false;
         }
-        int8_t edgeEdgeIntersectionCount[4] = {}; // number of edges found to intersect with each face
+        //int8_t edgeEdgeIntersectionCount[4] = {}; // number of edges found to intersect with each face
         // In some circumstances, two tetrahedrons can intersect such that only the edges of one tetrahedron intersect with the
         // faces of the other, and not the other way around. So we need to check both.
-        for (int swapped=0; swapped<2; swapped++)
+        //for (int swapped=0; swapped<2; swapped++)
         {
             // Take advantage of the fact that the two tetrahedrons are regular and congruent, and
             // just check if any edge of tetrahedron "a" intersects with any face of tetrahedron "b".
             // Don't count it if only the endpoint of an edge intersects.
-            for (int edgeNum=0; edgeNum < tetrahedronEdges_face3; edgeNum++)
+            for (int edgeNum=0; edgeNum < /*tetrahedronEdges_face3*/_countof(tetrahedronEdges); edgeNum++)
             {
                 Coord3 p0 = a->t[tetrahedronEdges[edgeNum][0]];
                 Coord3 p1 = a->t[tetrahedronEdges[edgeNum][1]];
                 // Since it's guaranteed that due to the overlapCache, both tetrahedrons are single-attached end pieces, and all
                 // collisions with nearer pieces are already cached, we can safely skip face[3]
-                for (int faceNum=0; faceNum<3; faceNum++)
+                for (int faceNum=0; faceNum</*3*/_countof(tetrahedronFaces); faceNum++)
                 {
                     Tetrahedron normalizedTetrahedron; // first 3 points are the face, and the 4th point is for calculating the normal
                     for (int i=0; i<4; i++)
@@ -485,19 +485,19 @@ public:
                         vNumerator = -vNumerator;
                         uvDenominator = -uvDenominator;
                     }
-                    if (uNumerator == 0 || vNumerator == 0)
+                    /*if (uNumerator == 0 || vNumerator == 0)
                     {
                         edgeEdgeIntersectionCount[faceNum]++;
                         continue;
-                    }
+                    }*/
                     if (uNumerator <= 0 || vNumerator <= 0)
                         continue;
                     Coord uvNumeratorSum = uNumerator + vNumerator;
-                    if (uvNumeratorSum == uvDenominator)
+                    /*if (uvNumeratorSum == uvDenominator)
                     {
                         edgeEdgeIntersectionCount[faceNum]++;
                         return true;
-                    }
+                    }*/
                     if (uvNumeratorSum <  uvDenominator)
                         return true;
                 }
@@ -506,9 +506,10 @@ public:
         }
         // The above will fail to detect an overlap in which 3 edges of one tetrahedron perfectly intersect with 3 edges of the other.
         // But we can detect that case by checking the edgeEdgeIntersectionCount[] values.
-        return edgeEdgeIntersectionCount[0] == 4 &&
+        /*return edgeEdgeIntersectionCount[0] == 4 &&
                edgeEdgeIntersectionCount[1] == 4 &&
-               edgeEdgeIntersectionCount[2] == 4 ? OVERLAP_EDGES_TO_EDGES : 0;
+               edgeEdgeIntersectionCount[2] == 4 ? OVERLAP_EDGES_TO_EDGES : 0;*/
+        return false;
     }
 #endif
 };
