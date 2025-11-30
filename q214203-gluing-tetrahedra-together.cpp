@@ -96,6 +96,7 @@ public:
     uint8_t  faceAttachedFace[4];
     TetIndex index; // 1-based; 0=unassigned
     CompressedSubpolytet compressedPath; // 0 = skip overlap check
+    bool isLeaf;
     Tet() : t()
     {
         init();
@@ -556,8 +557,10 @@ void attachNewTet(Polytet &polytet, TetIndex i, TetIndex iAttachTo, const int fa
     t.faceAttached    [2] = -1;
     t.faceAttached    [3] = iAttachTo;
     t.faceAttachedFace[3] = faceNum;
+    t.isLeaf = true;
     tetToAttachTo.faceAttached    [faceNum] = i;
     tetToAttachTo.faceAttachedFace[faceNum] = 3;
+    tetToAttachTo.isLeaf &= faceNum == 3;
 }
 
 // First two tetrahedrons are implied. Each element is a subsequent tetrahedron, with the value indicating where
@@ -871,9 +874,8 @@ void canonicalizePolytet(Polytet &polytet, int tetCount, SymmetryRoot runningLea
         const RotationTable *thisRotationTable;
         {
             const Tet &singlyAttachedTet = polytet[i];
-            for (int j=0; j<3; j++)
-                if (singlyAttachedTet.faceAttached[j] >= 0)
-                    goto skipThisTet; // not a singly attached tet
+            if (!singlyAttachedTet.isLeaf)
+                goto skipThisTet; // not a singly attached tet
             t = &polytet[singlyAttachedTet.faceAttached[3]];
             int attachedFace = singlyAttachedTet.faceAttachedFace[3];
             thisRotationTable = &rotationTable[attachedFace];
@@ -1021,6 +1023,7 @@ void enumerate(
     Polytet &polytet = LOCAL_STORAGE(workerPolytet);
     polytet[0].init();
     polytet[0].t = start;
+    polytet[0].isLeaf = true;
     attachNewTet(polytet, 1, 0, 3);
     polytet.setSize(tetCount);
 
@@ -1068,6 +1071,7 @@ void enumerate(
                 {
                     if (tetToAttachTo.faceAttached[faceNum] >= 0)
                         continue;
+                    bool wasLeaf = tetToAttachTo.isLeaf;
                     attachNewTet(polytet, tetCount - 1, tetNumToAttachTo, faceNum);
                     // Canonicalize the rotation of this new polytet in compressed form, so that it can be compared against others
                     SymmetryRoot runningLeastPolytet[2];
@@ -1212,12 +1216,14 @@ void enumerate(
                 skipDueToOverlap:
 
                     tetToAttachTo.faceAttached[faceNum] = -1;
+                    tetToAttachTo.isLeaf = wasLeaf;
                 }
             }
 
             polytet[1].faceAttached[0] = -1;
             polytet[1].faceAttached[1] = -1;
             polytet[1].faceAttached[2] = -1;
+            polytet[1].isLeaf = true;
         }
     }
 }
