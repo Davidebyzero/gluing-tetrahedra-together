@@ -1354,26 +1354,7 @@ int main(int argc, char *argv[])
                         overlap.setB(prevEndTet);
                         foundOverlap = overlap(maximalTouchingSqrDistance);
                         if (foundOverlap)
-                        {
                             overlapCache[compressedPath - 1] = 1;
-#if 0
-                            int i;
-                            /*for (i=0; i<stackPos; i++) printf("%d", faceNumStack[i]);
-                            printf(" = ");*/
-                            for (i = stackPos - 1; i>=0; i-=2) printf("%d", faceNumStack[i]);
-                            i = stackPos & 1;
-                            for (; i<stackPos; i+=2) printf("%d", faceNumStack[i]);
-                            printf(", ");
-                            int64_t blah = compressedPath;
-                            while (blah)
-                            {
-                                blah--;
-                                printf("%u", blah % 3);
-                                blah /= 3;
-                            }
-                            printf(", 0x%llX = %d\n", compressedPath - 1, overlapCache[compressedPath - 1]);
-#endif
-                        }
                         else
                             overlapCache[compressedPath - 1] = -1;
                     }
