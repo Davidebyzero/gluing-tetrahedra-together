@@ -87,6 +87,8 @@ typedef std::array<Coord3, 4> Tetrahedron;
 #endif
 
 class Polytet;
+void attachNewTet(Polytet &polytet, TetIndex i, TetIndex iAttachTo, const int faceNum);
+
 class Tet
 {
     void tagSkipOverlapCheckHelper(Polytet &polytet, int depth, const struct RotationTable *thisRotationTable, int faceRotation = 0, CompressedSubpolytet curCompressedPath = 0, CompressedSubpolytet trit = 1);
@@ -97,10 +99,7 @@ public:
     TetIndex index; // 1-based; 0=unassigned
     CompressedSubpolytet compressedPath; // 0 = skip overlap check
     bool isLeaf;
-    Tet() : t()
-    {
-        init();
-    }
+    Tet() : t() {}
     void init()
     {
         faceAttached[0] = -1; // t[0],t[1],t[2]
@@ -120,6 +119,13 @@ class Polytet : public std::array<Tet, MAXIMUM_TETCOUNT>
     int tetCount;
 public:
     TetIndex nextIndex;
+    void init(const Tetrahedron &start)
+    {
+        (*this)[0].init();
+        (*this)[0].t = start;
+        (*this)[0].isLeaf = true;
+        attachNewTet(*this, 1, 0, 3);
+    }
     void resetIndexing(size_t first) // This function should not be called if the polytet hasn't yet been populated
     {
         
@@ -1021,10 +1027,7 @@ void enumerate(
     TetrahedronOverlap &overlap = LOCAL_STORAGE(workerOverlap);
 
     Polytet &polytet = LOCAL_STORAGE(workerPolytet);
-    polytet[0].init();
-    polytet[0].t = start;
-    polytet[0].isLeaf = true;
-    attachNewTet(polytet, 1, 0, 3);
+    polytet.init(start);
     polytet.setSize(tetCount);
 
     CompressedPolytet newRotatedPolytet(polytet);
