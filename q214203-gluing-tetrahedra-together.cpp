@@ -88,9 +88,34 @@ typedef std::array<Coord, 3> Coord3;
 typedef std::array<Coord3, 4> Tetrahedron;
 #endif
 
-class Polytet;
-void attachNewTet(Polytet &polytet, TetIndex i, TetIndex iAttachTo, const int faceNum);
+// vertex indices of faces with identical chirality
+static const int tetrahedronFaces[4][4] =
+{
+    {0, 1, 2, 3},
+    {0, 3, 1, 2},
+    {0, 2, 3, 1},
+    {1, 3, 2, 0},
+};
 
+const int tetrahedronEdges_face3 = 3;
+static const int tetrahedronEdges[][2] =
+{
+    {0, 1},
+    {0, 2},
+    {0, 3},
+    // The following edges, on face[3], can be skipped when the new tetrahedron is one whose edges are being checked
+    {1, 2},
+    {1, 3},
+    {2, 3},
+};
+
+#if defined(PRINT_POLYTETS) || defined(PRINT_POLYTETS_WITH_SYMMETRY)
+#   define CALCULATE_COORDINATES_FOR_PRINTING true
+#else
+#   define CALCULATE_COORDINATES_FOR_PRINTING false
+#endif
+
+class Polytet;
 class Tet
 {
     void tagSkipOverlapCheckHelper(Polytet &polytet, int depth, const struct RotationTable *thisRotationTable, int faceRotation = 0, CompressedSubpolytet curCompressedPath = 0, CompressedSubpolytet trit = 1);
@@ -121,12 +146,14 @@ class Polytet : public std::array<Tet, MAXIMUM_TETCOUNT>
     int tetCount;
 public:
     TetIndex nextIndex;
+
+    template <bool CALCULATE_COORDINATES = CALCULATE_COORDINATES_FOR_PRINTING>
     void init(const Tetrahedron &start)
     {
         (*this)[0].init();
         (*this)[0].t = start;
         (*this)[0].isLeaf = true;
-        attachNewTet(*this, 1, 0, 3);
+        attachNewTet<CALCULATE_COORDINATES>(1, 0, 3);
     }
     void resetIndexing(size_t first) // This function should not be called if the polytet hasn't yet been populated
     {
@@ -138,27 +165,67 @@ public:
     }
     void setSize(int x) {tetCount = x;}
     int size() {return tetCount;}
-};
 
-// vertex indices of faces with identical chirality
-static const int tetrahedronFaces[4][4] =
-{
-    {0, 1, 2, 3},
-    {0, 3, 1, 2},
-    {0, 2, 3, 1},
-    {1, 3, 2, 0},
-};
-
-const int tetrahedronEdges_face3 = 3;
-static const int tetrahedronEdges[][2] =
-{
-    {0, 1},
-    {0, 2},
-    {0, 3},
-    // The following edges, on face[3], can be skipped when the new tetrahedron is one whose edges are being checked
-    {1, 2},
-    {1, 3},
-    {2, 3},
+    template <bool CALCULATE_COORDINATES = CALCULATE_COORDINATES_FOR_PRINTING>
+    void attachNewTet(TetIndex i, TetIndex iAttachTo, const int faceNum)
+    {
+        Polytet &polytet = *this;
+        Tet &t             = polytet[i];
+        Tet &tetToAttachTo = polytet[iAttachTo];
+        if (CALCULATE_COORDINATES)
+        {
+#ifdef USE_GMP
+            mpz_t *newVertex = t.t.t[0];
+            // Get center of face by averaging its vertices' coordinates.
+            for (int d=0; d<3; d++)
+                mpz_set(newVertex[d], tetToAttachTo.t.t[tetrahedronFaces[faceNum][0]][d]);
+            for (int p=1; p<3; p++)
+                for (int d=0; d<3; d++)
+                    mpz_add(newVertex[d], newVertex[d], tetToAttachTo.t.t[tetrahedronFaces[faceNum][p]][d]);
+            // Finalize the new vertex
+            for (int d=0; d<3; d++)
+            {
+                mpz_div_ui(newVertex[d], newVertex[d], 3);
+                mpz_mul_ui(newVertex[d], newVertex[d], 2);
+                mpz_sub   (newVertex[d], newVertex[d], tetToAttachTo.t.t[3 - faceNum][d]);
+            }
+#else
+            Coord3 &newVertex = t.t[0];
+            newVertex = {{0, 0, 0}};
+            // Get center of face by averaging its vertices' coordinates.
+            for (int p=0; p<4; p++)
+            {
+                if (p == 3 - faceNum)
+                    continue;
+                for (int d=0; d<3; d++)
+                    newVertex[d] += tetToAttachTo.t[p][d];
+            }
+            // Finalize the new vertex
+            for (int d=0; d<3; d++)
+                newVertex[d] = newVertex[d]/3 * 2 - tetToAttachTo.t[3 - faceNum][d];
+#endif
+            // Copy the other vertices
+            for (int p=0; p<3; p++)
+            {
+                int p1 = tetrahedronFaces[faceNum][p];
+                for (int d=0; d<3; d++)
+#ifdef USE_GMP
+                    mpz_set(t.t.t[1+p][d], tetToAttachTo.t.t[p1][d]);
+#else
+                    t.t[1+p][d] = tetToAttachTo.t[p1][d];
+#endif
+            }
+        }
+        t.faceAttached    [0] = -1;
+        t.faceAttached    [1] = -1;
+        t.faceAttached    [2] = -1;
+        t.faceAttached    [3] = iAttachTo;
+        t.faceAttachedFace[3] = faceNum;
+        t.isLeaf = true;
+        tetToAttachTo.faceAttached    [faceNum] = i;
+        tetToAttachTo.faceAttachedFace[faceNum] = 3;
+        tetToAttachTo.isLeaf &= faceNum == 3;
+    }
 };
 
 static const int faceRotateReflect[2][3][3] =
@@ -513,64 +580,6 @@ public:
 #endif
 };
 
-void attachNewTet(Polytet &polytet, TetIndex i, TetIndex iAttachTo, const int faceNum)
-{
-    Tet &t             = polytet[i];
-    Tet &tetToAttachTo = polytet[iAttachTo];
-#ifndef DISABLE_OVERLAP_CHECKING
-#ifdef USE_GMP
-    mpz_t *newVertex = t.t.t[0];
-    // Get center of face by averaging its vertices' coordinates.
-    for (int d=0; d<3; d++)
-        mpz_set(newVertex[d], tetToAttachTo.t.t[tetrahedronFaces[faceNum][0]][d]);
-    for (int p=1; p<3; p++)
-        for (int d=0; d<3; d++)
-            mpz_add(newVertex[d], newVertex[d], tetToAttachTo.t.t[tetrahedronFaces[faceNum][p]][d]);
-    // Finalize the new vertex
-    for (int d=0; d<3; d++)
-    {
-        mpz_div_ui(newVertex[d], newVertex[d], 3);
-        mpz_mul_ui(newVertex[d], newVertex[d], 2);
-        mpz_sub   (newVertex[d], newVertex[d], tetToAttachTo.t.t[3 - faceNum][d]);
-    }
-#else
-    Coord3 &newVertex = t.t[0];
-    newVertex = {{0, 0, 0}};
-    // Get center of face by averaging its vertices' coordinates.
-    for (int p=0; p<4; p++)
-    {
-        if (p == 3 - faceNum)
-            continue;
-        for (int d=0; d<3; d++)
-            newVertex[d] += tetToAttachTo.t[p][d];
-    }
-    // Finalize the new vertex
-    for (int d=0; d<3; d++)
-        newVertex[d] = newVertex[d]/3 * 2 - tetToAttachTo.t[3 - faceNum][d];
-#endif
-    // Copy the other vertices
-    for (int p=0; p<3; p++)
-    {
-        int p1 = tetrahedronFaces[faceNum][p];
-        for (int d=0; d<3; d++)
-#ifdef USE_GMP
-            mpz_set(t.t.t[1+p][d], tetToAttachTo.t.t[p1][d]);
-#else
-            t.t[1+p][d] = tetToAttachTo.t[p1][d];
-#endif
-    }
-#endif // DISABLE_OVERLAP_CHECKING
-    t.faceAttached    [0] = -1;
-    t.faceAttached    [1] = -1;
-    t.faceAttached    [2] = -1;
-    t.faceAttached    [3] = iAttachTo;
-    t.faceAttachedFace[3] = faceNum;
-    t.isLeaf = true;
-    tetToAttachTo.faceAttached    [faceNum] = i;
-    tetToAttachTo.faceAttachedFace[faceNum] = 3;
-    tetToAttachTo.isLeaf &= faceNum == 3;
-}
-
 // First two tetrahedrons are implied. Each element is a subsequent tetrahedron, with the value indicating where
 // it's attached. The lower 2 bits indicate which face (can only have 3 different values, because at least 1 face
 // will always already be attached). The remaining bits indicate which tetrahedron (which can never be zero,
@@ -584,7 +593,7 @@ class CompressedPolytet
             if (value & ((CompressedPolytetBits)1 << ((index - 1) * 3 + faceNum)))
             {
                 TetIndex thisIndex = nextIndex++;
-                attachNewTet(polytet, thisIndex, index, faceNum);
+                polytet.attachNewTet(thisIndex, index, faceNum);
                 uncompressHelper(thisIndex, nextIndex);
             }
         }
@@ -1072,7 +1081,7 @@ void enumerate(
                     if (tetToAttachTo.faceAttached[faceNum] >= 0)
                         continue;
                     bool wasLeaf = tetToAttachTo.isLeaf;
-                    attachNewTet(polytet, tetCount - 1, tetNumToAttachTo, faceNum);
+                    polytet.attachNewTet(tetCount - 1, tetNumToAttachTo, faceNum);
                     // Canonicalize the rotation of this new polytet in compressed form, so that it can be compared against others
                     SymmetryRoot runningLeastPolytet[2];
 
@@ -1321,7 +1330,7 @@ int main(int argc, char *argv[])
         for (int i=5; i<MAXIMUM_TETCOUNT; i+=2)
             mul_start_3(start, maximalTouchingSqrDistance);
         Polytet polytet;
-        polytet.init(start);
+        polytet.init<true>(start);
         int tetCount = 2, topCount = 1, bottomCount = 1;
         int8_t faceNumStack[MAXIMUM_TETCOUNT];
         int stackPos = 0;
@@ -1396,7 +1405,7 @@ int main(int argc, char *argv[])
                 int iAttachTo = tetCount - 2;
                 if (attachToTop)    topCount++;
                 else             bottomCount++;
-                attachNewTet(polytet, tetCount++, iAttachTo, faceNumStack[stackPos]);
+                polytet.attachNewTet<true>(tetCount++, iAttachTo, faceNumStack[stackPos]);
                 faceNumStack[++stackPos] = -1;
             }
         }
