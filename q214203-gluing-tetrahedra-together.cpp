@@ -1332,13 +1332,14 @@ int main(int argc, char *argv[])
         int tetCount = 2, topCount = 1, bottomCount = 1;
         int8_t faceNumStack[MAXIMUM_TETCOUNT];
         int stackPos = 0;
-        faceNumStack[0] = 0;
+        faceNumStack[0] = -1;
         TetrahedronOverlap overlap;
 
         for (;;)
         {
-            if (tetCount == MAXIMUM_TETCOUNT || faceNumStack[stackPos] == 3)
+            if (faceNumStack[stackPos] < 0)
             {
+                int8_t foundOverlap = 0;
                 if (tetCount > 5)
                 {
                     Tet  &newEndTet = polytet[tetCount - 1];
@@ -1346,11 +1347,13 @@ int main(int argc, char *argv[])
                     // TODO: Autodetect MIN_OVERLAP_DEPTH
                     newEndTet.tagSkipOverlapCheck(polytet, MIN_OVERLAP_DEPTH);
                     CompressedSubpolytet compressedPath = (prevEndTet.compressedPath - 1) / 3;
-                    if (overlapCache[compressedPath - 1] == 0)
+                    foundOverlap = overlapCache[compressedPath - 1];
+                    if (foundOverlap == 0)
                     {
                         overlap.setA( newEndTet);
                         overlap.setB(prevEndTet);
-                        if (overlap(maximalTouchingSqrDistance))
+                        foundOverlap = overlap(maximalTouchingSqrDistance);
+                        if (foundOverlap)
                         {
                             overlapCache[compressedPath - 1] = 1;
 #if 0
@@ -1375,6 +1378,13 @@ int main(int argc, char *argv[])
                             overlapCache[compressedPath - 1] = -1;
                     }
                 }
+                if (foundOverlap)
+                    goto backtrackOverlapChecking;
+                faceNumStack[stackPos]++;
+            }
+            if (tetCount == MAXIMUM_TETCOUNT || faceNumStack[stackPos] == 3)
+            {
+            backtrackOverlapChecking:
                 if (--stackPos < 0)
                     break;
                 if (bottomCount > topCount) bottomCount--;
@@ -1391,7 +1401,7 @@ int main(int argc, char *argv[])
                 if (attachToTop)    topCount++;
                 else             bottomCount++;
                 attachNewTet(polytet, tetCount++, iAttachTo, faceNumStack[stackPos]);
-                faceNumStack[++stackPos] = 0;
+                faceNumStack[++stackPos] = -1;
             }
         }
     }
