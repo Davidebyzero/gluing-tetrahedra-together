@@ -781,9 +781,9 @@ bool readFile(const char *filename, uint8_t *ptr, size_t size)
 #endif
 
 #ifdef USE_GMP
-void mul_start_3(Tetrahedron &start, mpz_t maximalTouchingSqrDistance, CompressedSubpolytet &minUnseenCompressedSubpolytet)
+void mul_start_3(Tetrahedron &start, mpz_t maximalTouchingSqrDistance)
 #else
-void mul_start_3(Tetrahedron &start, Coord &maximalTouchingSqrDistance, CompressedSubpolytet &minUnseenCompressedSubpolytet)
+void mul_start_3(Tetrahedron &start, Coord &maximalTouchingSqrDistance)
 #endif
 {
     for (int p=0; p<4; p++)
@@ -798,7 +798,6 @@ void mul_start_3(Tetrahedron &start, Coord &maximalTouchingSqrDistance, Compress
 #else
     maximalTouchingSqrDistance *= 3*3;
 #endif
-    minUnseenCompressedSubpolytet = minUnseenCompressedSubpolytet * 3 + 1;
 }
 
 #ifdef MULTITHREADING
@@ -1000,8 +999,6 @@ void enumerate(
     const uint8_t *&basePolytetTable,
     const int basePolytetCompressedSize,
     const size_t polytetCount,
-
-    const CompressedSubpolytet minUnseenCompressedSubpolytet,
 
     HashIndex *&hashTable,
     const size_t hashTableSize,
@@ -1245,17 +1242,14 @@ int main(int argc, char *argv[])
     static Coord maximalTouchingSqrDistance = MAXIMAL_TOUCHING_SQR_DISTANCE;
 #endif
 
-    CompressedSubpolytet minUnseenCompressedSubpolytet = 0;
     int8_t *overlapCache; // A bitmap (packed booleans) was tried, and was a bit slower; so, we'll use 8 times as much RAM to get slightly better speed.
                           // But now, we're benefitting from using bytes anyway, because during precomputing, a negative value indicates "no overlap".
                           // The array indices are branchless polytet attachment paths in bijective trinary, with 1 subtracted.
-    {
-        size_t overlapCacheSize = 0;
-        for (int i=0; i<MAXIMUM_TETCOUNT-2; i++)
-            overlapCacheSize = overlapCacheSize * 3 + 1;
-        overlapCache = (int8_t*)calloc(overlapCacheSize, 1);
-        std::cout << "Allocated " << overlapCacheSize << " bytes for overlap caching" << std::endl;
-    }
+    size_t overlapCacheSize = 0;
+    for (int i=0; i<MAXIMUM_TETCOUNT-2; i++)
+        overlapCacheSize = overlapCacheSize * 3 + 1;
+    overlapCache = (int8_t*)calloc(overlapCacheSize, 1);
+    std::cout << "Allocated " << overlapCacheSize << " bytes for overlap caching" << std::endl;
 
     size_t poolSize;
     void *pool = NULL;
@@ -1288,7 +1282,6 @@ int main(int argc, char *argv[])
                 if (resumeFile) fclose(resumeFile);
                 resumeFile = f;
                 tetCount = i;
-                mul_start_3(start, maximalTouchingSqrDistance, minUnseenCompressedSubpolytet);
             }
             else
                 break;
@@ -1308,7 +1301,7 @@ int main(int argc, char *argv[])
             }
             int polytetsCompressedSize = ((tetCount - 2) * 3 + 8-1) / 8;
             polytetCount = size / polytetsCompressedSize;
-            if (!readAndCloseOpenedFile(resumeFile, (uint8_t*)pool, size) || !readFile(filename = OVERLAP_BITMAP_FILENAME, (uint8_t*)overlapCache, minUnseenCompressedSubpolytet))
+            if (!readAndCloseOpenedFile(resumeFile, (uint8_t*)pool, size) || !readFile(filename = OVERLAP_BITMAP_FILENAME, (uint8_t*)overlapCache, overlapCacheSize))
             {
                 std::cerr << "Error reading file \"" << filename << "\"" << std::endl;
                 goto errorQuit;
@@ -1326,7 +1319,7 @@ int main(int argc, char *argv[])
     // Precompute overlapCache
     {
         for (int i=5; i<MAXIMUM_TETCOUNT; i+=2)
-            mul_start_3(start, maximalTouchingSqrDistance, minUnseenCompressedSubpolytet);
+            mul_start_3(start, maximalTouchingSqrDistance);
         Polytet polytet;
         polytet.init(start);
         int tetCount = 2, topCount = 1, bottomCount = 1;
@@ -1386,6 +1379,9 @@ int main(int argc, char *argv[])
             }
         }
     }
+#ifdef WRITE_TO_FILES
+    writeFile(OVERLAP_BITMAP_FILENAME, (uint8_t*)overlapCache, overlapCacheSize);
+#endif
     auto currentTime = std::chrono::steady_clock::now();
     std::cout << "Precomputed overlap cache [" << std::chrono::duration_cast<std::chrono::milliseconds>(currentTime - startTime).count() << " ms]" << std::endl;
 
@@ -1531,7 +1527,6 @@ int main(int argc, char *argv[])
                 std::ref(start), maximalTouchingSqrDistance,
                 overlapCache,
                 tetCount, std::ref(pool), std::ref(poolSize), std::ref((const uint8_t *&)basePolytetTable), basePolytetCompressedSize, polytetCount,
-                minUnseenCompressedSubpolytet,
                 std::ref(hashTable), hashTableSize, std::ref(polytetTable), newPolytetsCompressedSize, polytetTableElementSize,
                 std::ref(newPolytetCount), std::ref(polytetChiralCount[threadID])
     #ifdef PRINT_SYMMETRY_TOTALS
@@ -1547,7 +1542,6 @@ int main(int argc, char *argv[])
             start, maximalTouchingSqrDistance,
             overlapCache,
             tetCount, pool, poolSize, (const uint8_t *&)basePolytetTable, basePolytetCompressedSize, polytetCount,
-            minUnseenCompressedSubpolytet,
             hashTable, hashTableSize, polytetTable, newPolytetsCompressedSize, polytetTableElementSize,
             newPolytetCount, polytetChiralCount
     #ifdef PRINT_SYMMETRY_TOTALS
@@ -1569,11 +1563,6 @@ int main(int argc, char *argv[])
 #endif
 
         resumedFromFile = false;
-        mul_start_3(start, maximalTouchingSqrDistance, minUnseenCompressedSubpolytet);
-#ifdef WRITE_TO_FILES
-        else
-            writeFile(OVERLAP_BITMAP_FILENAME, (uint8_t*)overlapCache, minUnseenCompressedSubpolytet);
-#endif
     }
 
 errorQuit:
