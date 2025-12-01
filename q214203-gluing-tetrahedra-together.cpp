@@ -999,7 +999,9 @@ void enumerate(
     const Coord maximalTouchingSqrDistance,
 #endif
 
+#ifndef DISABLE_OVERLAP_CHECKING
     int8_t *overlapCache,
+#endif
 
     const int tetCount,
     void *&pool,
@@ -1248,6 +1250,7 @@ int main(int argc, char *argv[])
     static Coord maximalTouchingSqrDistance = MAXIMAL_TOUCHING_SQR_DISTANCE;
 #endif
 
+#ifndef DISABLE_OVERLAP_CHECKING
     int8_t *overlapCache; // A bitmap (packed booleans) was tried, and was a bit slower; so, we'll use 8 times as much RAM to get slightly better speed.
                           // But now, we're benefitting from using bytes anyway, because during precomputing, a negative value indicates "no overlap".
                           // The array indices are branchless polytet attachment paths in bijective trinary, with 1 subtracted.
@@ -1256,6 +1259,7 @@ int main(int argc, char *argv[])
         overlapCacheSize = overlapCacheSize * 3 + 1;
     overlapCache = (int8_t*)calloc(overlapCacheSize, 1);
     std::cout << "Allocated " << overlapCacheSize << " bytes for overlap caching" << std::endl;
+#endif
 
     size_t poolSize;
     void *pool = NULL;
@@ -1310,7 +1314,11 @@ int main(int argc, char *argv[])
             }
             int polytetsCompressedSize = ((tetCount - 2) * 3 + 8-1) / 8;
             polytetCount = size / polytetsCompressedSize;
-            if (!readAndCloseOpenedFile(resumeFile, (uint8_t*)pool, size) || !readFile(filename = OVERLAP_BITMAP_FILENAME, (uint8_t*)overlapCache, overlapCacheSize))
+            if (!readAndCloseOpenedFile(resumeFile, (uint8_t*)pool, size)
+#ifndef DISABLE_OVERLAP_CHECKING
+                || !readFile(filename = OVERLAP_BITMAP_FILENAME, (uint8_t*)overlapCache, overlapCacheSize)
+#endif
+                )
             {
                 std::cerr << "Error reading file \"" << filename << "\"" << std::endl;
                 goto errorQuit;
@@ -1325,6 +1333,8 @@ int main(int argc, char *argv[])
         if (!pool) quitMemory();
     }
 
+    decltype(startTime) currentTime;
+#ifndef DISABLE_OVERLAP_CHECKING
     // Precompute overlapCache
     {
 #if defined(PRINT_POLYTETS) || defined(PRINT_POLYTETS_WITH_SYMMETRY)
@@ -1434,8 +1444,9 @@ int main(int argc, char *argv[])
 #ifdef WRITE_TO_FILES
     writeFile(OVERLAP_BITMAP_FILENAME, (uint8_t*)overlapCache, overlapCacheSize);
 #endif
-    auto currentTime = std::chrono::steady_clock::now();
+    currentTime = std::chrono::steady_clock::now();
     std::cout << "Precomputed overlap cache [" << std::chrono::duration_cast<std::chrono::milliseconds>(currentTime - startTime).count() << " ms]" << std::endl;
+#endif // !DISABLE_OVERLAP_CHECKING
 
 #ifdef MULTITHREADING
     std::thread workers[WORKER_THREADS];
@@ -1577,7 +1588,9 @@ int main(int argc, char *argv[])
             workers[threadID] = std::thread(enumerate,
                 threadID, std::ref(nextWorkAssignment), workAssignmentLength,
                 std::ref(start), maximalTouchingSqrDistance,
+#ifndef DISABLE_OVERLAP_CHECKING
                 overlapCache,
+#endif
                 tetCount, std::ref(pool), std::ref(poolSize), std::ref((const uint8_t *&)basePolytetTable), basePolytetCompressedSize, polytetCount,
                 std::ref(hashTable), hashTableSize, std::ref(polytetTable), newPolytetsCompressedSize, polytetTableElementSize,
                 std::ref(newPolytetCount), std::ref(polytetChiralCount[threadID])
@@ -1592,7 +1605,9 @@ int main(int argc, char *argv[])
         polytetChiralCount = 0;
         enumerate(
             start, maximalTouchingSqrDistance,
+#ifndef DISABLE_OVERLAP_CHECKING
             overlapCache,
+#endif
             tetCount, pool, poolSize, (const uint8_t *&)basePolytetTable, basePolytetCompressedSize, polytetCount,
             hashTable, hashTableSize, polytetTable, newPolytetsCompressedSize, polytetTableElementSize,
             newPolytetCount, polytetChiralCount
@@ -1622,7 +1637,9 @@ int main(int argc, char *argv[])
 
 errorQuit:
     free(pool);
+#ifndef DISABLE_OVERLAP_CHECKING
     free(overlapCache);
+#endif
 #ifdef USE_GMP
     mpz_clear(maximalTouchingSqrDistance);
     for (int d=0; d<3; d++)
