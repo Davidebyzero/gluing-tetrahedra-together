@@ -151,7 +151,8 @@ public:
     void init(const Tetrahedron &start)
     {
         (*this)[0].init();
-        (*this)[0].t = start;
+        if (CALCULATE_COORDINATES)
+            (*this)[0].t = start;
         (*this)[0].isLeaf = true;
         attachNewTet<CALCULATE_COORDINATES>(1, 0, 3);
     }
