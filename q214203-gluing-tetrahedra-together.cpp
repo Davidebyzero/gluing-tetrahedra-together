@@ -1122,7 +1122,7 @@ void enumerate(
                         if (polytet[tetCheckIntersectionI].compressedPath == UINT64_MAX)
                             continue; // skip this check for speed (it'll always be false anyway)
                         CompressedSubpolytet compressedPath = (polytet[tetCheckIntersectionI].compressedPath - 1) / 3;
-                        if (compressedPath >= 1 && overlapCache[compressedPath - 1] > 0)
+                        if (compressedPath > 0 && overlapCache[compressedPath - 1] > 0)
                             goto skipDueToOverlap;
                     }
 #endif // DISABLE_OVERLAP_CHECKING
@@ -1349,7 +1349,7 @@ int main(int argc, char *argv[])
             if (faceNumStack[stackPos] < 0)
             {
                 int8_t foundOverlap = 0;
-                if (tetCount > 5)
+                if (tetCount > MIN_OVERLAP_DEPTH)
                 {
                     Tet  &newEndTet = polytet[tetCount - 1];
                     Tet &prevEndTet = polytet[tetCount - 2];
