@@ -1157,21 +1157,7 @@ void enumerate(
 #endif
                         polytetChiralCount += isChiral;
                         if ((uint8_t*)entry + polytetTableElementSize - (uint8_t*)pool > poolSize)
-                        {
-#ifdef MULTITHREADING
                             quitMemory();
-#else
-                            void *newPool = realloc(pool, poolSize += poolSize * MEMORY_POOL_GROW_RATIO);
-                            if (!newPool) {free(pool); quitMemory();}
-                            ptrdiff_t diff = (uint8_t*)newPool - (uint8_t*)pool;
-                            pool = newPool;
-                            (const uint8_t*&)basePolytetTable += diff;
-                            (const uint8_t*&)hashTable        += diff;
-                            (const uint8_t*&)polytetTable     += diff;
-                            (const uint8_t*&)index            += diff;
-                            (const uint8_t*&)entry            += diff;
-#endif
-                        }
                         memcpy(entry, &runningLeastPolytet[0].value, newPolytetsCompressedSize);
 #ifdef MULTITHREADING
                         *index = newPolytetCountFetched + 1;
@@ -1547,24 +1533,14 @@ int main(int argc, char *argv[])
         uint8_t *basePolytetTable;
         HashIndex *hashTable;
         void *polytetTable;
-        for (;;)
         {
             basePolytetTable = (uint8_t*)pool;
             size_t basePolytetTableSize = basePolytetCompressedSize * polytetCount;
             hashTable = (HashIndex*)(basePolytetTable + basePolytetTableSize);
             polytetTable = hashTable + hashTableSize;
             size_t minSize = (uint8_t*)polytetTable - (uint8_t*)pool;
-            if (minSize < poolSize)
-                break;
-#ifdef MULTITHREADING
-            quitMemory();
-#else
-            void *newPool = realloc(pool, basePolytetTableSize); // so that if the below realloc() results in a move, only what memory actually needs to be moved will be moved
-            if (!newPool) {free(pool); quitMemory();}
-            void *newPool2 = realloc(newPool, poolSize = minSize + minSize * MEMORY_POOL_GROW_RATIO);
-            if (!newPool2) {free(newPool); quitMemory();}
-            pool = newPool2;
-#endif
+            if (minSize >= poolSize)
+                quitMemory();
         }
         memset(hashTable, 0, hashTableSize * sizeof(HashIndex));
         const int newPolytetsCompressedSize = ((tetCount - 2) * 3 + 8-1) / 8;
