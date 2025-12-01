@@ -158,7 +158,6 @@ public:
     }
     void resetIndexing(size_t first) // This function should not be called if the polytet hasn't yet been populated
     {
-        
         for (int i=0; i<tetCount; i++)
             (*this)[i].index = 0;
         (*this)[first].index = 1;
