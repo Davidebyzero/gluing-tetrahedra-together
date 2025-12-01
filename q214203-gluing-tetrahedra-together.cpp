@@ -1288,6 +1288,9 @@ int main(int argc, char *argv[])
                 if (resumeFile) fclose(resumeFile);
                 resumeFile = f;
                 tetCount = i;
+#if defined(PRINT_POLYTETS) || defined(PRINT_POLYTETS_WITH_SYMMETRY)
+                mul_start_3(start, maximalTouchingSqrDistance, minUnseenCompressedSubpolytet);
+#endif
             }
             else
                 break;
@@ -1324,8 +1327,15 @@ int main(int argc, char *argv[])
 
     // Precompute overlapCache
     {
+#if defined(PRINT_POLYTETS) || defined(PRINT_POLYTETS_WITH_SYMMETRY)
+        auto start2 = start;
+        auto maximalTouchingSqrDistance2 = maximalTouchingSqrDistance;
+#else
+        auto &start2 = start;
+        auto &maximalTouchingSqrDistance2 = maximalTouchingSqrDistance;
+#endif
         for (int i=5; i<MAXIMUM_TETCOUNT; i+=2)
-            mul_start_3(start, maximalTouchingSqrDistance);
+            mul_start_3(start2, maximalTouchingSqrDistance2);
         Polytet polytet;
         polytet.init<true>(start);
         int tetCount = 2, topCount = 1, bottomCount = 1;
@@ -1352,7 +1362,7 @@ int main(int argc, char *argv[])
                         auto reflectedCompressedPath = reflectCompressedPath(compressedPath);
                         overlap.setA( newEndTet);
                         overlap.setB(prevEndTet);
-                        foundOverlap = overlap(maximalTouchingSqrDistance);
+                        foundOverlap = overlap(maximalTouchingSqrDistance2);
                         if (foundOverlap)
                         {
 #ifdef PRINT_POLYTETS_EDGE_CASES
@@ -1605,6 +1615,9 @@ int main(int argc, char *argv[])
 #endif
 
         resumedFromFile = false;
+#if defined(PRINT_POLYTETS) || defined(PRINT_POLYTETS_WITH_SYMMETRY)
+        mul_start_3(start, maximalTouchingSqrDistance, minUnseenCompressedSubpolytet);
+#endif
     }
 
 errorQuit:
