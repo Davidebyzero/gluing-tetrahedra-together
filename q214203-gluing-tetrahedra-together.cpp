@@ -5,6 +5,7 @@
 #include <iostream>
 #include <string.h>
 #include <array>
+#include <inttypes.h>
 #include <chrono>
 #include "config.h"
 
@@ -36,6 +37,8 @@ void quitMemory()
 
 typedef int TetIndex;
 
+#define MIN_OVERLAP_DEPTH 5
+
 #if MAXIMUM_TETCOUNT > 17
 typedef uint64_t HashIndex;
 #else
@@ -52,7 +55,7 @@ typedef  int64_t          CompressedPolytetBitsSigned;
 #define COMPRESSEDPOLYTETBITS_MAX UINT64_MAX
 #endif
 
-typedef uint64_t CompressedSubpolytet; // compressed in branchless format; for caching known-overlapping subpolytet paths
+typedef uint64_t CompressedSubpolytet; // compressed in branchless format, in bijective trinary; for caching known-overlapping subpolytet paths
 
 #ifdef USE_GMP
 class Tetrahedron
@@ -85,51 +88,6 @@ typedef std::array<Coord, 3> Coord3;
 typedef std::array<Coord3, 4> Tetrahedron;
 #endif
 
-class Polytet;
-class Tet
-{
-    void tagSkipOverlapCheckHelper(Polytet &polytet, int depth, const struct RotationTable *thisRotationTable, int faceRotation = 0, CompressedSubpolytet curCompressedPath = 0, CompressedSubpolytet trit = 1);
-public:
-    Tetrahedron t;
-    TetIndex faceAttached    [4];
-    uint8_t  faceAttachedFace[4];
-    TetIndex index; // 1-based; 0=unassigned
-    CompressedSubpolytet compressedPath; // 0 = skip overlap check
-    Tet() : t()
-    {
-        init();
-    }
-    void init()
-    {
-        faceAttached[0] = -1; // t[0],t[1],t[2]
-        faceAttached[1] = -1; // t[0],t[1],t[3]
-        faceAttached[2] = -1; // t[0],t[2],t[3]
-        faceAttached[3] = -1; // t[1],t[2],t[3]
-    }
-    void assignIndex(TetIndex &nextIndex)
-    {
-        if (index == 0)
-            index = nextIndex++;
-    }
-    void tagSkipOverlapCheck(Polytet &polytet, int depth);
-};
-class Polytet : public std::array<Tet, MAXIMUM_TETCOUNT>
-{
-    int tetCount;
-public:
-    TetIndex nextIndex;
-    void resetIndexing(size_t first) // This function should not be called if the polytet hasn't yet been populated
-    {
-        
-        for (int i=0; i<tetCount; i++)
-            (*this)[i].index = 0;
-        (*this)[first].index = 1;
-        nextIndex = 2;
-    }
-    void setSize(int x) {tetCount = x;}
-    int size() {return tetCount;}
-};
-
 // vertex indices of faces with identical chirality
 static const int tetrahedronFaces[4][4] =
 {
@@ -149,6 +107,125 @@ static const int tetrahedronEdges[][2] =
     {1, 2},
     {1, 3},
     {2, 3},
+};
+
+#if defined(PRINT_POLYTETS) || defined(PRINT_POLYTETS_WITH_SYMMETRY)
+#   define CALCULATE_COORDINATES_FOR_PRINTING true
+#else
+#   define CALCULATE_COORDINATES_FOR_PRINTING false
+#endif
+
+class Polytet;
+class Tet
+{
+    void tagSkipOverlapCheckHelper(Polytet &polytet, int depth, const struct RotationTable *thisRotationTable, int faceRotation = 0, CompressedSubpolytet curCompressedPath = 0, CompressedSubpolytet trit = 1);
+public:
+    Tetrahedron t;
+    TetIndex faceAttached    [4];
+    uint8_t  faceAttachedFace[4];
+    TetIndex index; // 1-based; 0=unassigned
+    CompressedSubpolytet compressedPath; // 0 = skip overlap check
+    bool isLeaf;
+    Tet() : t() {}
+    void init()
+    {
+        faceAttached[0] = -1; // t[0],t[1],t[2]
+        faceAttached[1] = -1; // t[0],t[1],t[3]
+        faceAttached[2] = -1; // t[0],t[2],t[3]
+        faceAttached[3] = -1; // t[1],t[2],t[3]
+    }
+    void assignIndex(TetIndex &nextIndex)
+    {
+        if (index == 0)
+            index = nextIndex++;
+    }
+    void tagSkipOverlapCheck(Polytet &polytet, int depth);
+};
+class Polytet : public std::array<Tet, MAXIMUM_TETCOUNT>
+{
+    int tetCount;
+public:
+    TetIndex nextIndex;
+
+    template <bool CALCULATE_COORDINATES = CALCULATE_COORDINATES_FOR_PRINTING>
+    void init(const Tetrahedron &start)
+    {
+        (*this)[0].init();
+        if (CALCULATE_COORDINATES)
+            (*this)[0].t = start;
+        (*this)[0].isLeaf = true;
+        attachNewTet<CALCULATE_COORDINATES>(1, 0, 3);
+    }
+    void resetIndexing(size_t first) // This function should not be called if the polytet hasn't yet been populated
+    {
+        for (int i=0; i<tetCount; i++)
+            (*this)[i].index = 0;
+        (*this)[first].index = 1;
+        nextIndex = 2;
+    }
+    void setSize(int x) {tetCount = x;}
+    int size() {return tetCount;}
+
+    template <bool CALCULATE_COORDINATES = CALCULATE_COORDINATES_FOR_PRINTING>
+    void attachNewTet(TetIndex i, TetIndex iAttachTo, const int faceNum)
+    {
+        Polytet &polytet = *this;
+        Tet &t             = polytet[i];
+        Tet &tetToAttachTo = polytet[iAttachTo];
+        if (CALCULATE_COORDINATES)
+        {
+#ifdef USE_GMP
+            mpz_t *newVertex = t.t.t[0];
+            // Get center of face by averaging its vertices' coordinates.
+            for (int d=0; d<3; d++)
+                mpz_set(newVertex[d], tetToAttachTo.t.t[tetrahedronFaces[faceNum][0]][d]);
+            for (int p=1; p<3; p++)
+                for (int d=0; d<3; d++)
+                    mpz_add(newVertex[d], newVertex[d], tetToAttachTo.t.t[tetrahedronFaces[faceNum][p]][d]);
+            // Finalize the new vertex
+            for (int d=0; d<3; d++)
+            {
+                mpz_div_ui(newVertex[d], newVertex[d], 3);
+                mpz_mul_ui(newVertex[d], newVertex[d], 2);
+                mpz_sub   (newVertex[d], newVertex[d], tetToAttachTo.t.t[3 - faceNum][d]);
+            }
+#else
+            Coord3 &newVertex = t.t[0];
+            newVertex = {{0, 0, 0}};
+            // Get center of face by averaging its vertices' coordinates.
+            for (int p=0; p<4; p++)
+            {
+                if (p == 3 - faceNum)
+                    continue;
+                for (int d=0; d<3; d++)
+                    newVertex[d] += tetToAttachTo.t[p][d];
+            }
+            // Finalize the new vertex
+            for (int d=0; d<3; d++)
+                newVertex[d] = newVertex[d]/3 * 2 - tetToAttachTo.t[3 - faceNum][d];
+#endif
+            // Copy the other vertices
+            for (int p=0; p<3; p++)
+            {
+                int p1 = tetrahedronFaces[faceNum][p];
+                for (int d=0; d<3; d++)
+#ifdef USE_GMP
+                    mpz_set(t.t.t[1+p][d], tetToAttachTo.t.t[p1][d]);
+#else
+                    t.t[1+p][d] = tetToAttachTo.t[p1][d];
+#endif
+            }
+        }
+        t.faceAttached    [0] = -1;
+        t.faceAttached    [1] = -1;
+        t.faceAttached    [2] = -1;
+        t.faceAttached    [3] = iAttachTo;
+        t.faceAttachedFace[3] = faceNum;
+        t.isLeaf = true;
+        tetToAttachTo.faceAttached    [faceNum] = i;
+        tetToAttachTo.faceAttachedFace[faceNum] = 3;
+        tetToAttachTo.isLeaf &= faceNum == 3;
+    }
 };
 
 static const int faceRotateReflect[2][3][3] =
@@ -465,62 +542,6 @@ public:
 #endif
 };
 
-void attachNewTet(Polytet &polytet, TetIndex i, TetIndex iAttachTo, const int faceNum)
-{
-    Tet &t             = polytet[i];
-    Tet &tetToAttachTo = polytet[iAttachTo];
-#ifndef DISABLE_OVERLAP_CHECKING
-#ifdef USE_GMP
-    mpz_t *newVertex = t.t.t[0];
-    // Get center of face by averaging its vertices' coordinates.
-    for (int d=0; d<3; d++)
-        mpz_set(newVertex[d], tetToAttachTo.t.t[tetrahedronFaces[faceNum][0]][d]);
-    for (int p=1; p<3; p++)
-        for (int d=0; d<3; d++)
-            mpz_add(newVertex[d], newVertex[d], tetToAttachTo.t.t[tetrahedronFaces[faceNum][p]][d]);
-    // Finalize the new vertex
-    for (int d=0; d<3; d++)
-    {
-        mpz_div_ui(newVertex[d], newVertex[d], 3);
-        mpz_mul_ui(newVertex[d], newVertex[d], 2);
-        mpz_sub   (newVertex[d], newVertex[d], tetToAttachTo.t.t[3 - faceNum][d]);
-    }
-#else
-    Coord3 &newVertex = t.t[0];
-    newVertex = {{0, 0, 0}};
-    // Get center of face by averaging its vertices' coordinates.
-    for (int p=0; p<4; p++)
-    {
-        if (p == 3 - faceNum)
-            continue;
-        for (int d=0; d<3; d++)
-            newVertex[d] += tetToAttachTo.t[p][d];
-    }
-    // Finalize the new vertex
-    for (int d=0; d<3; d++)
-        newVertex[d] = newVertex[d]/3 * 2 - tetToAttachTo.t[3 - faceNum][d];
-#endif
-    // Copy the other vertices
-    for (int p=0; p<3; p++)
-    {
-        int p1 = tetrahedronFaces[faceNum][p];
-        for (int d=0; d<3; d++)
-#ifdef USE_GMP
-            mpz_set(t.t.t[1+p][d], tetToAttachTo.t.t[p1][d]);
-#else
-            t.t[1+p][d] = tetToAttachTo.t[p1][d];
-#endif
-    }
-#endif // DISABLE_OVERLAP_CHECKING
-    t.faceAttached    [0] = -1;
-    t.faceAttached    [1] = -1;
-    t.faceAttached    [2] = -1;
-    t.faceAttached    [3] = iAttachTo;
-    t.faceAttachedFace[3] = faceNum;
-    tetToAttachTo.faceAttached    [faceNum] = i;
-    tetToAttachTo.faceAttachedFace[faceNum] = 3;
-}
-
 // First two tetrahedrons are implied. Each element is a subsequent tetrahedron, with the value indicating where
 // it's attached. The lower 2 bits indicate which face (can only have 3 different values, because at least 1 face
 // will always already be attached). The remaining bits indicate which tetrahedron (which can never be zero,
@@ -534,17 +555,17 @@ class CompressedPolytet
             if (value & ((CompressedPolytetBits)1 << ((index - 1) * 3 + faceNum)))
             {
                 TetIndex thisIndex = nextIndex++;
-                attachNewTet(polytet, thisIndex, index, faceNum);
+                polytet.attachNewTet(thisIndex, index, faceNum);
                 uncompressHelper(thisIndex, nextIndex);
             }
         }
     }
 public:
-    CompressedPolytetBits value;
+    CompressedPolytetBits value, runningLeastValue;
     Polytet &polytet;
     int reflect;
     CompressedPolytet(Polytet &_polytet) : polytet(_polytet), value(0) {}
-    void append(Tet &tetToCompress, const RotationTable *thisRotationTable, int faceRotation)
+    bool append(Tet &tetToCompress, const RotationTable *thisRotationTable, int faceRotation)
     // indices of vertexMap[] are compressed-output vertices; elements of vertexMap[] are the original vertices of tetToCompress
     {
         tetToCompress.assignIndex(polytet.nextIndex);
@@ -561,11 +582,15 @@ public:
             Tet *attachedTet = &polytet[tetToCompress.faceAttached[faceNum]];
             attachedTet->assignIndex(polytet.nextIndex);
             value |= (CompressedPolytetBits)1 << ((tetToCompress.index - 1 - 1) * 3 + _faceNum);
+            if (value > runningLeastValue)
+                return false;
 
             int attachedFace = tetToCompress.faceAttachedFace[faceNum];
             int rotation = thisRotationTable->rotation[rotatedFaceNum];
-            append(*attachedTet, &rotationTable[attachedFace], rotation);
+            if (!append(*attachedTet, &rotationTable[attachedFace], rotation))
+                return false;
         }
+        return true;
     }
     void uncompress()
     {
@@ -638,9 +663,9 @@ void printPolytet(CompressedPolytetBits value, Polytet &polytet,
 {
     std::cout << valuePrefix;
 #if MAXIMUM_TETCOUNT > 23
-    printf("0x%llX%08llX", ((uint64_t*)&value)[1], ((uint64_t*)&value)[0]);
+    printf("0x%" PRIX64 "%08" PRIX64, ((uint64_t*)&value)[1], ((uint64_t*)&value)[0]);
 #else
-    printf("0x%llX", value);
+    printf("0x%" PRIX64, value);
 #endif
     std::cout << valueSuffix;
     bool first = true;
@@ -654,7 +679,7 @@ void printPolytet(CompressedPolytetBits value, Polytet &polytet,
         mpz_div_ui(printCenter[d], printCenter[d], polytet.size() * 4);
     for (int i=0; i<polytet.size(); i++)
     {
-        printf(first ? (nestedParens ? openParen : "") : ",\n");
+        fputs(first ? (nestedParens ? openParen : "") : ",\n", stdout);
         first = false;
         if (nestedParens) std::cout << openParen;
         for (int p=0; p<4; p++)
@@ -727,9 +752,9 @@ bool readFile(const char *filename, uint8_t *ptr, size_t size)
 #endif
 
 #ifdef USE_GMP
-void mul_start_3(Tetrahedron &start, mpz_t maximalTouchingSqrDistance, CompressedSubpolytet &minUnseenCompressedSubpolytet)
+void mul_start_3(Tetrahedron &start, mpz_t maximalTouchingSqrDistance)
 #else
-void mul_start_3(Tetrahedron &start, Coord &maximalTouchingSqrDistance, CompressedSubpolytet &minUnseenCompressedSubpolytet)
+void mul_start_3(Tetrahedron &start, Coord &maximalTouchingSqrDistance)
 #endif
 {
     for (int p=0; p<4; p++)
@@ -744,7 +769,6 @@ void mul_start_3(Tetrahedron &start, Coord &maximalTouchingSqrDistance, Compress
 #else
     maximalTouchingSqrDistance *= 3*3;
 #endif
-    minUnseenCompressedSubpolytet = minUnseenCompressedSubpolytet * 3 + 1;
 }
 
 #ifdef MULTITHREADING
@@ -757,7 +781,6 @@ void mul_start_3(Tetrahedron &start, Coord &maximalTouchingSqrDistance, Compress
     {
 #endif // MULTITHREADING
         Polytet workerPolytet;
-        TetrahedronOverlap workerOverlap;
 #ifdef MULTITHREADING
     };
     static WorkerJob workerJobs[WORKER_THREADS];
@@ -793,24 +816,20 @@ struct SymmetryRoot
     CompressedPolytetBits value;
 #if defined(PRINT_SYMMETRY_TOTALS) || defined(PRINT_POLYTETS_WITH_SYMMETRY)
     TetIndex tetI;
-    uint8_t rotation;
 #endif
 };
 
 void canonicalizePolytet(Polytet &polytet, int tetCount, SymmetryRoot runningLeastPolytet[2], CompressedPolytet &newRotatedPolytet, bool &isChiral
 #if defined(PRINT_SYMMETRY_TOTALS) || defined(PRINT_POLYTETS_WITH_SYMMETRY)
-    , int &mirrorType // only meaningful if "isChiral" is false
-    , SymmetryRoot newRotatedPolytetList    [(MAXIMUM_TETCOUNT + 1) * 3]
-    , SymmetryRoot newRotatedPolytetSym3List[(MAXIMUM_TETCOUNT + 1) / 3]
-    , int &newRotatedPolytetCount
-    , int &newRotatedPolytetSym3Count
+    , SymmetryType &symmetryType
+    , int &symmetry  // number of rotations under which the polytet is identical
 #endif
     )
 {
     runningLeastPolytet[1].value = runningLeastPolytet[0].value = COMPRESSEDPOLYTETBITS_MAX;
 #if defined(PRINT_SYMMETRY_TOTALS) || defined(PRINT_POLYTETS_WITH_SYMMETRY)
-    newRotatedPolytetCount     = 0;
-    newRotatedPolytetSym3Count = 0;
+    TetIndex symmetricRootList[MAXIMUM_TETCOUNT * 3];
+    CompressedPolytetBits lastValue = COMPRESSEDPOLYTETBITS_MAX;
 #endif
 
     Tet *t = &polytet[1];
@@ -832,9 +851,8 @@ void canonicalizePolytet(Polytet &polytet, int tetCount, SymmetryRoot runningLea
         const RotationTable *thisRotationTable;
         {
             const Tet &singlyAttachedTet = polytet[i];
-            for (int j=0; j<3; j++)
-                if (singlyAttachedTet.faceAttached[j] >= 0)
-                    goto skipThisTet; // not a singly attached tet
+            if (!singlyAttachedTet.isLeaf)
+                goto skipThisTet; // not a singly attached tet
             t = &polytet[singlyAttachedTet.faceAttached[3]];
             int attachedFace = singlyAttachedTet.faceAttachedFace[3];
             thisRotationTable = &rotationTable[attachedFace];
@@ -855,85 +873,78 @@ void canonicalizePolytet(Polytet &polytet, int tetCount, SymmetryRoot runningLea
         }
         for (int reflect=0; reflect<2; reflect++, rotationStepRange+=2)
         {
+            newRotatedPolytet.runningLeastValue = runningLeastPolytet[reflect].value;
             for (uint8_t rotationStep=rotationStepRange[0]; rotationStep<=rotationStepRange[1]; rotationStep++)
             {
                 polytet.resetIndexing(i);
                 newRotatedPolytet.value = 0;
                 newRotatedPolytet.reflect = reflect;
-                newRotatedPolytet.append(*t, thisRotationTable, rotationStep);
-
-#if defined(PRINT_SYMMETRY_TOTALS) || defined(PRINT_POLYTETS_WITH_SYMMETRY)
-                if (!reflect)
-                {
-                    if (newRotatedPolytetCount && rotationStep == 2 && rotationStepRange[0] != rotationStepRange[1] &&
-                        newRotatedPolytetList[newRotatedPolytetCount - 1].value == newRotatedPolytet.value)
-                    {
-                        newRotatedPolytetCount -= 2;
-                        newRotatedPolytetSym3List[newRotatedPolytetSym3Count].value = newRotatedPolytet.value;
-                        newRotatedPolytetSym3List[newRotatedPolytetSym3Count].tetI = i;
-                        newRotatedPolytetSym3List[newRotatedPolytetSym3Count].rotation = rotationStep;
-                        newRotatedPolytetSym3Count++;
-                    }
-                    else
-                    {
-                        newRotatedPolytetList[newRotatedPolytetCount].value = newRotatedPolytet.value;
-                        newRotatedPolytetList[newRotatedPolytetCount].tetI = i;
-                        newRotatedPolytetList[newRotatedPolytetCount].rotation = rotationStep;
-                        newRotatedPolytetCount++;
-                    }
-                }
-#endif
+                if (!newRotatedPolytet.append(*t, thisRotationTable, rotationStep))
+                    continue;
 
                 // Update the running "least" rotation
-                if (runningLeastPolytet[reflect].value > newRotatedPolytet.value)
+                if (newRotatedPolytet.runningLeastValue > newRotatedPolytet.value)
                 {
-                    runningLeastPolytet[reflect].value = newRotatedPolytet.value;
+                    newRotatedPolytet.runningLeastValue = newRotatedPolytet.value;
 #if defined(PRINT_SYMMETRY_TOTALS) || defined(PRINT_POLYTETS_WITH_SYMMETRY)
                     runningLeastPolytet[reflect].tetI = i;
-                    runningLeastPolytet[reflect].rotation = rotationStep;
+                    if (!reflect)
+                    {
+                        symmetricRootList[0] = i;
+                        symmetry = 1;
+                    }
 #endif
                 }
+#if defined(PRINT_SYMMETRY_TOTALS) || defined(PRINT_POLYTETS_WITH_SYMMETRY)
+                else
+                if (!reflect && newRotatedPolytet.runningLeastValue == newRotatedPolytet.value)
+                    symmetricRootList[symmetry++] = i;
+#endif
             }
+            runningLeastPolytet[reflect].value = newRotatedPolytet.runningLeastValue;
         }
     skipThisTet:;
     }
 
-    isChiral = runningLeastPolytet[1].value != runningLeastPolytet[0].value;
-    if (!isChiral)
+    isChiral = runningLeastPolytet[0].value != runningLeastPolytet[1].value;
+    if (isChiral)
     {
+        if (runningLeastPolytet[0].value > runningLeastPolytet[1].value)
+            runningLeastPolytet[0].value = runningLeastPolytet[1].value;
 #if defined(PRINT_SYMMETRY_TOTALS) || defined(PRINT_POLYTETS_WITH_SYMMETRY)
+        symmetryType = SymmetryType_Chiral;
+#endif
+    }
+#if defined(PRINT_SYMMETRY_TOTALS) || defined(PRINT_POLYTETS_WITH_SYMMETRY)
+    else
+    {
         if (runningLeastPolytet[0].tetI == runningLeastPolytet[1].tetI)
-            mirrorType = 1;
+            symmetryType = SymmetryType_AchiralMirror;
         else
         {
-            auto checkMirror = [&](TetIndex tetI) -> int8_t
+            auto checkMirror = [&](TetIndex tetI) -> SymmetryType
             {
                 polytet[                       tetI].tagSkipOverlapCheck(polytet, 1);
                 CompressedSubpolytet path0to1 =                       (polytet[runningLeastPolytet[1].tetI].compressedPath - 1) / 3;
                 polytet[runningLeastPolytet[1].tetI].tagSkipOverlapCheck(polytet, 1);
                 CompressedSubpolytet path1to0 = reflectCompressedPath((polytet[                       tetI].compressedPath - 1) / 3);
                 if (path1to0 != path0to1)
-                    return 0;
+                    return SymmetryType_AchiralNonmirror;
                 while (path0to1 > 3)
                     path0to1 = ((path0to1 - 1) / 3 - 1) / 3;
-                return path0to1 ? 2 : 1;
+                return path0to1 ? SymmetryType_AchiralMirrorFace : SymmetryType_AchiralMirror;
             };
-            for (int i=0; i<newRotatedPolytetCount; i++)
-                if (newRotatedPolytetList[i].value == runningLeastPolytet[0].value)
-                    if (mirrorType = checkMirror(newRotatedPolytetList[i].tetI); mirrorType)
-                        goto foundIsMirror;
-            for (int i=0; i<newRotatedPolytetSym3Count; i++)
-                if (newRotatedPolytetSym3List[i].value == runningLeastPolytet[0].value)
-                    if (mirrorType = checkMirror(newRotatedPolytetSym3List[i].tetI); mirrorType)
-                        goto foundIsMirror;
-            mirrorType = 0;
+            for (int i=0; i<symmetry; i++)
+                if (symmetryType = checkMirror(symmetricRootList[i]); symmetryType > SymmetryType_AchiralNonmirror)
+                    goto foundIsMirror;
+            symmetryType = SymmetryType_AchiralNonmirror;
+            return;
         foundIsMirror:;
+            if (symmetryType > SymmetryType_AchiralMirror && (symmetry == 2 || symmetry > 3))
+                symmetryType = SymmetryType_AchiralMirror; // collapse "mirror2" into "mirror" for symmetries that have multiple mirror planes
         }
-#endif
     }
-    else
-    if (runningLeastPolytet[0].value > runningLeastPolytet[1].value)
-        runningLeastPolytet[0].value = runningLeastPolytet[1].value;
+#endif
 }
 
 void enumerate(
@@ -950,8 +961,9 @@ void enumerate(
     const Coord maximalTouchingSqrDistance,
 #endif
 
-    bool *overlapCache,
-    bool &foundOverlaps,
+#ifndef DISABLE_OVERLAP_CHECKING
+    int8_t *overlapCache,
+#endif
 
     const int tetCount,
     void *&pool,
@@ -959,9 +971,6 @@ void enumerate(
     const uint8_t *&basePolytetTable,
     const int basePolytetCompressedSize,
     const size_t polytetCount,
-
-    int minOverlapDepth,
-    const CompressedSubpolytet minUnseenCompressedSubpolytet,
 
     HashIndex *&hashTable,
     const size_t hashTableSize,
@@ -984,22 +993,11 @@ void enumerate(
     size_t progressOutputInterval = polytetCount / 1000;
 #endif
 
-    TetrahedronOverlap &overlap = LOCAL_STORAGE(workerOverlap);
-
     Polytet &polytet = LOCAL_STORAGE(workerPolytet);
-    polytet[0].init();
-    polytet[0].t = start;
-    attachNewTet(polytet, 1, 0, 3);
+    polytet.init(start);
     polytet.setSize(tetCount);
 
     CompressedPolytet newRotatedPolytet(polytet);
-
-#if defined(PRINT_SYMMETRY_TOTALS) || defined(PRINT_POLYTETS_WITH_SYMMETRY)
-    SymmetryRoot newRotatedPolytetList    [(MAXIMUM_TETCOUNT + 1) * 3];
-    SymmetryRoot newRotatedPolytetSym3List[(MAXIMUM_TETCOUNT + 1) / 3];
-    int8_t symmetryList [(MAXIMUM_TETCOUNT + 1) * 3 + 1];
-    int8_t symmetry3List[(MAXIMUM_TETCOUNT + 1) / 3 + 1];
-#endif
 
 #ifdef MULTITHREADING
     for (;;)
@@ -1043,22 +1041,20 @@ void enumerate(
                 {
                     if (tetToAttachTo.faceAttached[faceNum] >= 0)
                         continue;
-                    attachNewTet(polytet, tetCount - 1, tetNumToAttachTo, faceNum);
+                    bool wasLeaf = tetToAttachTo.isLeaf;
+                    polytet.attachNewTet(tetCount - 1, tetNumToAttachTo, faceNum);
                     // Canonicalize the rotation of this new polytet in compressed form, so that it can be compared against others
                     SymmetryRoot runningLeastPolytet[2];
 
                     bool isChiral;
 #if defined(PRINT_SYMMETRY_TOTALS) || defined(PRINT_POLYTETS_WITH_SYMMETRY)
-                    int mirrorType; // only meaningful if "isChiral" is false
-                    int newRotatedPolytetCount, newRotatedPolytetSym3Count;
+                    SymmetryType symmetryType;
+                    int symmetry;
 #endif
                     canonicalizePolytet(polytet, tetCount, runningLeastPolytet, newRotatedPolytet, isChiral
 #if defined(PRINT_SYMMETRY_TOTALS) || defined(PRINT_POLYTETS_WITH_SYMMETRY)
-                        , mirrorType
-                        , newRotatedPolytetList
-                        , newRotatedPolytetSym3List
-                        , newRotatedPolytetCount
-                        , newRotatedPolytetSym3Count
+                        , symmetryType
+                        , symmetry
 #endif
                         );
 
@@ -1084,40 +1080,14 @@ void enumerate(
 #ifndef DISABLE_OVERLAP_CHECKING
                     // Check for overlap between this newly attached tetrahedron and the existing ones,
                     // and defer this until after the deduplication, to save a lot of time
-                    overlap.setA(newTet);
-                    // Set up the "skipOverlapCheck" flags to skip overlap checking up to a depth of 5
-                    newTet.tagSkipOverlapCheck(polytet, minOverlapDepth);
+                    newTet.tagSkipOverlapCheck(polytet, MIN_OVERLAP_DEPTH);
                     for (int tetCheckIntersectionI=0; tetCheckIntersectionI<polytet.size(); tetCheckIntersectionI++)
                     {
                         if (polytet[tetCheckIntersectionI].compressedPath == UINT64_MAX)
                             continue; // skip this check for speed (it'll always be false anyway)
                         CompressedSubpolytet compressedPath = (polytet[tetCheckIntersectionI].compressedPath - 1) / 3;
-                        if (compressedPath >= minUnseenCompressedSubpolytet)
-                        {
-                            overlap.setB(polytet[tetCheckIntersectionI]);
-                            if (auto overlapResult = overlap(maximalTouchingSqrDistance))
-                            {
-#   ifdef PRINT_POLYTETS_EDGE_CASES
-                                if (overlapResult < 0)
-                                {
-                                    boost::mutex::scoped_lock lock(printPolytetMutex);
-                                    printPolytet(runningLeastPolytet[0].value, polytet);
-                                }
-#   endif
-                                overlapCache[                      compressedPath  - 1] = true;
-                                overlapCache[reflectCompressedPath(compressedPath) - 1] = true;
-                                foundOverlaps = true;
-                                goto skipDueToOverlap;
-                            }
-                        }
-                        else
-                        {
-                            if (overlapCache[compressedPath - 1])
-                            {
-                                foundOverlaps = true;
-                                goto skipDueToOverlap;
-                            }
-                        }
+                        if (compressedPath > 0 && overlapCache[compressedPath - 1] > 0)
+                            goto skipDueToOverlap;
                     }
 #endif // DISABLE_OVERLAP_CHECKING
                     // No overlap found, so add runningLeastPolytet[0].value to hash table and chiral count
@@ -1149,21 +1119,7 @@ void enumerate(
 #endif
                         polytetChiralCount += isChiral;
                         if ((uint8_t*)entry + polytetTableElementSize - (uint8_t*)pool > poolSize)
-                        {
-#ifdef MULTITHREADING
                             quitMemory();
-#else
-                            void *newPool = realloc(pool, poolSize += poolSize * MEMORY_POOL_GROW_RATIO);
-                            if (!newPool) {free(pool); quitMemory();}
-                            ptrdiff_t diff = (uint8_t*)newPool - (uint8_t*)pool;
-                            pool = newPool;
-                            (const uint8_t*&)basePolytetTable += diff;
-                            (const uint8_t*&)hashTable        += diff;
-                            (const uint8_t*&)polytetTable     += diff;
-                            (const uint8_t*&)index            += diff;
-                            (const uint8_t*&)entry            += diff;
-#endif
-                        }
                         memcpy(entry, &runningLeastPolytet[0].value, newPolytetsCompressedSize);
 #ifdef MULTITHREADING
                         *index = newPolytetCountFetched + 1;
@@ -1172,110 +1128,32 @@ void enumerate(
 #endif
                         *(HashIndex*)((uint8_t*)entry + newPolytetsCompressedSize) = 0; // pointer to next hash collision
                     }
-#if defined(PRINT_SYMMETRY_TOTALS) || defined(PRINT_POLYTETS_WITH_SYMMETRY)
+#ifdef PRINT_SYMMETRY_TOTALS
+                    polytetSymmetryCount[symmetry - 1][symmetryType]++;
+#endif
+#ifdef PRINT_POLYTETS_WITH_SYMMETRY
+    #ifndef PRINT_POLYTETS
+                    if (!isChiral || symmetry > 1)
+    #endif
                     {
-                        const auto sorter = [](const void *a, const void *b) -> int
-                        {
-                            return sign((CompressedPolytetBitsSigned)((SymmetryRoot*)a)->value -
-                                        (CompressedPolytetBitsSigned)((SymmetryRoot*)b)->value);
-                        };
-                        qsort(newRotatedPolytetList    , newRotatedPolytetCount    , sizeof(SymmetryRoot), sorter);
-                        qsort(newRotatedPolytetSym3List, newRotatedPolytetSym3Count, sizeof(SymmetryRoot), sorter);
+                        boost::mutex::scoped_lock lock(printPolytetMutex);
 
-                        int symmetry = 0;
-
-                        int symmetryCount = 0; symmetryList[0] = newRotatedPolytetCount ? 1 : 0;
-                        bool symmetryIncludesNonUnity = false;
-                        for (int i=0; i<newRotatedPolytetCount-1; i++)
-                        {
-                            if (newRotatedPolytetList[i].value == newRotatedPolytetList[i+1].value)
-                            {
-                                symmetryList[symmetryCount]++;
-                                symmetryIncludesNonUnity = true;
-                            }
-                            else
-                            {
-                                if (!symmetry)
-                                    symmetry = symmetryList[symmetryCount];
-                                else
-                                if (symmetry != symmetryList[symmetryCount])
-                                    printf("WARNING! Nonmatching symmetry found\n");
-                                symmetryCount++;
-                                symmetryList[symmetryCount] = i<newRotatedPolytetCount-1 ? 1 : 0;
-                            }
-                        }
-                        if (symmetryList[symmetryCount])
-                        {
-                            if (!symmetry)
-                                symmetry = symmetryList[symmetryCount];
-                            else
-                            if (symmetry != symmetryList[symmetryCount])
-                                printf("WARNING! Nonmatching symmetry found\n");
-                            symmetryCount++;
-                        }
-
-                        int symmetry3Count = 0; symmetry3List[0] = newRotatedPolytetSym3Count ? 1 : 0;
-                        for (int i=0; i<newRotatedPolytetSym3Count-1; i++)
-                        {
-                            if (newRotatedPolytetSym3List[i].value == newRotatedPolytetSym3List[i+1].value)
-                                symmetry3List[symmetry3Count]++;
-                            else
-                            {
-                                if (!symmetry)
-                                    symmetry = symmetry3List[symmetry3Count] * 3;
-                                else
-                                if (symmetry != symmetry3List[symmetry3Count] * 3)
-                                    printf("WARNING! Nonmatching symmetry found\n");
-                                symmetry3Count++;
-                                symmetry3List[symmetry3Count] = i<newRotatedPolytetSym3Count-1 ? 1 : 0;
-                            }
-                        }
-                        if (symmetry3List[symmetry3Count])
-                        {
-                            if (!symmetry)
-                                symmetry = symmetry3List[symmetry3Count] * 3;
-                            else
-                            if (symmetry != symmetry3List[symmetry3Count] * 3)
-                                printf("WARNING! Nonmatching symmetry found\n");
-                            symmetry3Count++;
-                        }
-
-    #if defined(PRINT_SYMMETRY_TOTALS) || defined(PRINT_POLYTETS_WITH_SYMMETRY)
-                        if (mirrorType && (symmetry > 3 || symmetry == 2))
-                            mirrorType = 1; // collapse "mirror2" into "mirror" for symmetries that have multiple mirror planes
-    #endif
-    #ifdef PRINT_SYMMETRY_TOTALS
-                        polytetSymmetryCount
-                            [symmetry - 1]
-                            [isChiral ? SymmetryType_Chiral : SymmetryType_AchiralNonmirror + mirrorType]++;
-    #endif
-    #ifdef PRINT_POLYTETS_WITH_SYMMETRY
-        #ifndef PRINT_POLYTETS
-                        if (!isChiral || symmetryIncludesNonUnity || symmetry3Count)
-        #endif
-                        {
-                            boost::mutex::scoped_lock lock(printPolytetMutex);
-
-                            printf("<%d", symmetry);
-                            if (!isChiral)
-                                printf("%s%s", symmetryCount || symmetry3Count ? ", " : "", mirrorType ? (mirrorType==1 ? "mirror" : "mirror2") : "achiral");
-                            printf(">\n");
-
-                            printPolytet(runningLeastPolytet[0].value, polytet);
-                        }
-    #endif // PRINT_POLYTETS_WITH_SYMMETRY
+                        printf("<%d%s>\n", symmetry, symmetryTypeString[symmetryType]);
+                        printPolytet(runningLeastPolytet[0].value, polytet);
                     }
-#endif // defined(PRINT_SYMMETRY_TOTALS) || defined(PRINT_POLYTETS_WITH_SYMMETRY)
+#endif
                 skipDuplicate:
                 skipDueToOverlap:
 
                     tetToAttachTo.faceAttached[faceNum] = -1;
+                    tetToAttachTo.isLeaf = wasLeaf;
                 }
             }
 
             polytet[1].faceAttached[0] = -1;
             polytet[1].faceAttached[1] = -1;
             polytet[1].faceAttached[2] = -1;
+            polytet[1].isLeaf = true;
         }
     }
 }
@@ -1320,21 +1198,19 @@ int main(int argc, char *argv[])
     static Coord maximalTouchingSqrDistance = MAXIMAL_TOUCHING_SQR_DISTANCE;
 #endif
 
-    CompressedSubpolytet minUnseenCompressedSubpolytet = 0;
-    bool *overlapCache; // A bitmap (packed booleans) was tried, and was a bit slower; so, we'll use 8 times as much RAM to get slightly better speed
-    {
-        size_t overlapCacheSize = 0;
-        for (int i=0; i<MAXIMUM_TETCOUNT-2; i++)
-            overlapCacheSize = overlapCacheSize * 3 + 1;
-        overlapCache = (bool*)calloc(overlapCacheSize, 1);
-        std::cout << "Allocated " << overlapCacheSize << " bytes for overlap caching" << std::endl;
-    }
+#ifndef DISABLE_OVERLAP_CHECKING
+    int8_t *overlapCache; // A bitmap (packed booleans) was tried, and was a bit slower; so, we'll use 8 times as much RAM to get slightly better speed.
+                          // But now, we're benefitting from using bytes anyway, because during precomputing, a negative value indicates "no overlap".
+                          // The array indices are branchless polytet attachment paths in bijective trinary, with 1 subtracted.
+    size_t overlapCacheSize = 0;
+    for (int i=0; i<MAXIMUM_TETCOUNT-2; i++)
+        overlapCacheSize = overlapCacheSize * 3 + 1;
+    overlapCache = (int8_t*)calloc(overlapCacheSize, 1);
+    std::cout << "Allocated " << overlapCacheSize << " bytes for overlap caching" << std::endl;
+#endif
 
     size_t poolSize;
     void *pool = NULL;
-
-    int minOverlapDepth = 2;
-    bool foundOverlaps = false;
 
     size_t prevPolytetCount = 0;
     size_t polytetCount = 1;
@@ -1364,7 +1240,9 @@ int main(int argc, char *argv[])
                 if (resumeFile) fclose(resumeFile);
                 resumeFile = f;
                 tetCount = i;
+#if defined(PRINT_POLYTETS) || defined(PRINT_POLYTETS_WITH_SYMMETRY)
                 mul_start_3(start, maximalTouchingSqrDistance, minUnseenCompressedSubpolytet);
+#endif
             }
             else
                 break;
@@ -1384,23 +1262,16 @@ int main(int argc, char *argv[])
             }
             int polytetsCompressedSize = ((tetCount - 2) * 3 + 8-1) / 8;
             polytetCount = size / polytetsCompressedSize;
-            if (!readAndCloseOpenedFile(resumeFile, (uint8_t*)pool, size) || !readFile(filename = OVERLAP_BITMAP_FILENAME, (uint8_t*)overlapCache, minUnseenCompressedSubpolytet))
+            if (!readAndCloseOpenedFile(resumeFile, (uint8_t*)pool, size)
+#ifndef DISABLE_OVERLAP_CHECKING
+                || !readFile(filename = OVERLAP_BITMAP_FILENAME, (uint8_t*)overlapCache, overlapCacheSize)
+#endif
+                )
             {
                 std::cerr << "Error reading file \"" << filename << "\"" << std::endl;
                 goto errorQuit;
             }
             resumedFromFile = true;
-            // Reconstruct minOverlapDepth from loaded file
-            CompressedSubpolytet minOverlapCompressedSubpolytet = 0;
-            for (; minOverlapCompressedSubpolytet < minUnseenCompressedSubpolytet; minOverlapCompressedSubpolytet++)
-                if (overlapCache[minOverlapCompressedSubpolytet])
-                    break;
-            minOverlapDepth = 1;
-            while (minOverlapCompressedSubpolytet)
-            {
-                minOverlapCompressedSubpolytet /= 3;
-                minOverlapDepth++;
-            }
         }
     }
     if (!pool)
@@ -1409,6 +1280,121 @@ int main(int argc, char *argv[])
         pool = malloc(poolSize = MEMORY_POOL_INITIAL_SIZE);
         if (!pool) quitMemory();
     }
+
+    decltype(startTime) currentTime;
+#ifndef DISABLE_OVERLAP_CHECKING
+    // Precompute overlapCache
+    {
+#if defined(PRINT_POLYTETS) || defined(PRINT_POLYTETS_WITH_SYMMETRY)
+        auto start2 = start;
+        auto maximalTouchingSqrDistance2 = maximalTouchingSqrDistance;
+#else
+        auto &start2 = start;
+        auto &maximalTouchingSqrDistance2 = maximalTouchingSqrDistance;
+#endif
+        for (int i=5; i<MAXIMUM_TETCOUNT; i+=2)
+            mul_start_3(start2, maximalTouchingSqrDistance2);
+        Polytet polytet;
+        polytet.init<true>(start);
+        int tetCount = 2, topCount = 1, bottomCount = 1;
+        int8_t faceNumStack[MAXIMUM_TETCOUNT];
+        int stackPos = 0;
+        faceNumStack[0] = -1;
+        TetrahedronOverlap overlap;
+
+        for (;;)
+        {
+            if (faceNumStack[stackPos] < 0)
+            {
+                int8_t foundOverlap = 0;
+                if (tetCount > MIN_OVERLAP_DEPTH)
+                {
+                    Tet  &newEndTet = polytet[tetCount - 1];
+                    Tet &prevEndTet = polytet[tetCount - 2];
+                    // TODO: Autodetect MIN_OVERLAP_DEPTH
+                    newEndTet.tagSkipOverlapCheck(polytet, MIN_OVERLAP_DEPTH);
+                    CompressedSubpolytet compressedPath = (prevEndTet.compressedPath - 1) / 3;
+                    foundOverlap = overlapCache[compressedPath - 1];
+                    if (foundOverlap == 0)
+                    {
+                        auto reflectedCompressedPath = reflectCompressedPath(compressedPath);
+                        overlap.setA( newEndTet);
+                        overlap.setB(prevEndTet);
+                        foundOverlap = overlap(maximalTouchingSqrDistance2);
+                        if (foundOverlap)
+                        {
+#ifdef PRINT_POLYTETS_EDGE_CASES
+                            if (foundOverlap < 0)
+                            {
+                                SymmetryRoot runningLeastPolytet[2];
+                                bool isChiral;
+    #if defined(PRINT_SYMMETRY_TOTALS) || defined(PRINT_POLYTETS_WITH_SYMMETRY)
+                                SymmetryType symmetryType;
+                                int symmetry;
+    #endif
+                                polytet.setSize(tetCount);
+                                CompressedPolytet newRotatedPolytet(polytet);
+                                canonicalizePolytet(polytet, tetCount, runningLeastPolytet, newRotatedPolytet, isChiral
+    #if defined(PRINT_SYMMETRY_TOTALS) || defined(PRINT_POLYTETS_WITH_SYMMETRY)
+                                    , symmetryType
+                                    , symmetry
+    #endif
+                                    );
+                                printf("%d-cell "
+    #if defined(PRINT_SYMMETRY_TOTALS) || defined(PRINT_POLYTETS_WITH_SYMMETRY)
+                                    "<%d%s> "
+    #endif
+                                    , tetCount
+    #if defined(PRINT_SYMMETRY_TOTALS) || defined(PRINT_POLYTETS_WITH_SYMMETRY)
+                                    , symmetry, symmetryTypeString[symmetryType]
+    #endif
+                                    );
+                                printPolytet(runningLeastPolytet[0].value, polytet);
+                            }
+#endif
+                            overlapCache[         compressedPath - 1] = 1;
+                            overlapCache[reflectedCompressedPath - 1] = 1;
+                        }
+                        else
+                        {
+                            overlapCache[         compressedPath - 1] = -1;
+                            overlapCache[reflectedCompressedPath - 1] = -1;
+                        }
+                    }
+                }
+                if (foundOverlap)
+                    goto backtrackOverlapChecking;
+                faceNumStack[stackPos]++;
+            }
+            if (tetCount == MAXIMUM_TETCOUNT || faceNumStack[stackPos] == 3)
+            {
+            backtrackOverlapChecking:
+                if (--stackPos < 0)
+                    break;
+                if (bottomCount > topCount) bottomCount--;
+                else                           topCount--;
+                tetCount--;
+                polytet[tetCount - 2].faceAttached[faceNumStack[stackPos]] = -1;
+                polytet[tetCount - 2].isLeaf = true;
+                faceNumStack[stackPos]++;
+            }
+            else
+            {
+                bool attachToTop = bottomCount > topCount;
+                int iAttachTo = tetCount - 2;
+                if (attachToTop)    topCount++;
+                else             bottomCount++;
+                polytet.attachNewTet<true>(tetCount++, iAttachTo, faceNumStack[stackPos]);
+                faceNumStack[++stackPos] = -1;
+            }
+        }
+    }
+#ifdef WRITE_TO_FILES
+    writeFile(OVERLAP_BITMAP_FILENAME, (uint8_t*)overlapCache, overlapCacheSize);
+#endif
+    currentTime = std::chrono::steady_clock::now();
+    std::cout << "Precomputed overlap cache [" << std::chrono::duration_cast<std::chrono::milliseconds>(currentTime - startTime).count() << " ms]" << std::endl;
+#endif // !DISABLE_OVERLAP_CHECKING
 
 #ifdef MULTITHREADING
     std::thread workers[WORKER_THREADS];
@@ -1437,7 +1423,7 @@ int main(int argc, char *argv[])
         }
 #endif
 
-        auto currentTime = std::chrono::steady_clock::now();
+        currentTime = std::chrono::steady_clock::now();
         std::cout << tetCount << ": ";
         if (resumedFromFile)
             std::cout << "resumed";
@@ -1509,24 +1495,14 @@ int main(int argc, char *argv[])
         uint8_t *basePolytetTable;
         HashIndex *hashTable;
         void *polytetTable;
-        for (;;)
         {
             basePolytetTable = (uint8_t*)pool;
             size_t basePolytetTableSize = basePolytetCompressedSize * polytetCount;
             hashTable = (HashIndex*)(basePolytetTable + basePolytetTableSize);
             polytetTable = hashTable + hashTableSize;
             size_t minSize = (uint8_t*)polytetTable - (uint8_t*)pool;
-            if (minSize < poolSize)
-                break;
-#ifdef MULTITHREADING
-            quitMemory();
-#else
-            void *newPool = realloc(pool, basePolytetTableSize); // so that if the below realloc() results in a move, only what memory actually needs to be moved will be moved
-            if (!newPool) {free(pool); quitMemory();}
-            void *newPool2 = realloc(newPool, poolSize = minSize + minSize * MEMORY_POOL_GROW_RATIO);
-            if (!newPool2) {free(newPool); quitMemory();}
-            pool = newPool2;
-#endif
+            if (minSize >= poolSize)
+                quitMemory();
         }
         memset(hashTable, 0, hashTableSize * sizeof(HashIndex));
         const int newPolytetsCompressedSize = ((tetCount - 2) * 3 + 8-1) / 8;
@@ -1550,9 +1526,10 @@ int main(int argc, char *argv[])
             workers[threadID] = std::thread(enumerate,
                 threadID, std::ref(nextWorkAssignment), workAssignmentLength,
                 std::ref(start), maximalTouchingSqrDistance,
-                overlapCache, std::ref(foundOverlaps),
+#ifndef DISABLE_OVERLAP_CHECKING
+                overlapCache,
+#endif
                 tetCount, std::ref(pool), std::ref(poolSize), std::ref((const uint8_t *&)basePolytetTable), basePolytetCompressedSize, polytetCount,
-                minOverlapDepth, minUnseenCompressedSubpolytet,
                 std::ref(hashTable), hashTableSize, std::ref(polytetTable), newPolytetsCompressedSize, polytetTableElementSize,
                 std::ref(newPolytetCount), std::ref(polytetChiralCount[threadID])
     #ifdef PRINT_SYMMETRY_TOTALS
@@ -1566,9 +1543,10 @@ int main(int argc, char *argv[])
         polytetChiralCount = 0;
         enumerate(
             start, maximalTouchingSqrDistance,
-            overlapCache, foundOverlaps,
+#ifndef DISABLE_OVERLAP_CHECKING
+            overlapCache,
+#endif
             tetCount, pool, poolSize, (const uint8_t *&)basePolytetTable, basePolytetCompressedSize, polytetCount,
-            minOverlapDepth, minUnseenCompressedSubpolytet,
             hashTable, hashTableSize, polytetTable, newPolytetsCompressedSize, polytetTableElementSize,
             newPolytetCount, polytetChiralCount
     #ifdef PRINT_SYMMETRY_TOTALS
@@ -1590,18 +1568,16 @@ int main(int argc, char *argv[])
 #endif
 
         resumedFromFile = false;
+#if defined(PRINT_POLYTETS) || defined(PRINT_POLYTETS_WITH_SYMMETRY)
         mul_start_3(start, maximalTouchingSqrDistance, minUnseenCompressedSubpolytet);
-        if (!foundOverlaps)
-            minOverlapDepth++;
-#ifdef WRITE_TO_FILES
-        else
-            writeFile(OVERLAP_BITMAP_FILENAME, (uint8_t*)overlapCache, minUnseenCompressedSubpolytet);
 #endif
     }
 
 errorQuit:
     free(pool);
+#ifndef DISABLE_OVERLAP_CHECKING
     free(overlapCache);
+#endif
 #ifdef USE_GMP
     mpz_clear(maximalTouchingSqrDistance);
     for (int d=0; d<3; d++)
