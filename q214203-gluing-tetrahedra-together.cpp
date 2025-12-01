@@ -1372,6 +1372,15 @@ int main(int argc, char *argv[])
                                     , symmetry
     #endif
                                     );
+                                printf("%d-cell "
+    #if defined(PRINT_SYMMETRY_TOTALS) || defined(PRINT_POLYTETS_WITH_SYMMETRY)
+                                    "<%d%s> "
+    #endif
+                                    , tetCount
+    #if defined(PRINT_SYMMETRY_TOTALS) || defined(PRINT_POLYTETS_WITH_SYMMETRY)
+                                    , symmetry, symmetryTypeString[symmetryType]
+    #endif
+                                    );
                                 printPolytet(runningLeastPolytet[0].value, polytet);
                             }
 #endif
