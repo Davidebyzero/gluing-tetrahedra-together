@@ -1607,10 +1607,13 @@ int main(int argc, char *argv[])
         uint8_t *basePolytetTable;
         HashIndex *hashTable;
         void *polytetTable;
+        size_t alignmentExcess;
         {
             basePolytetTable = (uint8_t*)pool;
             size_t basePolytetTableSize = basePolytetCompressedSize * polytetCount;
             hashTable = (HashIndex*)(basePolytetTable + basePolytetTableSize);
+            alignmentExcess = (sizeof(HashIndex) - ((uintptr_t)hashTable % sizeof(HashIndex))) % sizeof(HashIndex);
+            (uint8_t*&)hashTable += alignmentExcess;
             polytetTable = hashTable + hashTableSize;
             size_t minSize = (uint8_t*)polytetTable - (uint8_t*)pool;
             if (minSize >= poolSize)
