@@ -7,9 +7,9 @@
 #define MEMORY_POOL_GROW_RATIO 1/16  // what proportion of the memory size to grow it by when more space is needed
 #define HASH_TABLE_RATIO 6
 //#define SHOW_PROGRESS 16  // if defined, show progress starting at this term
-//#define PRINT_POLYTETS               // requires USE_GMP
-//#define PRINT_POLYTETS_EDGE_CASES    // requires USE_GMP; print edge cases which require the latest fix to the overlap-checking algorithm
-//#define PRINT_POLYTETS_WITH_SYMMETRY // requires USE_GMP
+//#define PRINT_POLYTETS
+//#define PRINT_POLYTETS_EDGE_CASES    // print edge cases which require the latest fix to the overlap-checking algorithm
+//#define PRINT_POLYTETS_WITH_SYMMETRY
 //#define PRINT_SYMMETRY_TOTALS
 //#define DISABLE_OVERLAP_CHECKING
 

@@ -1195,12 +1195,6 @@ void enumerate(
                     }
 #endif // DISABLE_OVERLAP_CHECKING
                     // No overlap found, so add runningLeastPolytet[0].value to hash table and chiral count
-#if defined(PRINT_POLYTETS) && !defined(PRINT_POLYTETS_WITH_SYMMETRY)
-                    {
-                        boost::mutex::scoped_lock lock(printPolytetMutex);
-                        printPolytet(runningLeastPolytet[0].value, polytet);
-                    }
-#endif
                     {
 #ifdef MULTITHREADING
                         boost::mutex::scoped_lock lock(hashTableMutex[shard]);
@@ -1243,6 +1237,11 @@ void enumerate(
                         boost::mutex::scoped_lock lock(printPolytetMutex);
 
                         printf("<%d%s>\n", symmetry, symmetryTypeString[symmetryType]);
+                        printPolytet(runningLeastPolytet[0].value, polytet);
+                    }
+#elif defined(PRINT_POLYTETS)
+                    {
+                        boost::mutex::scoped_lock lock(printPolytetMutex);
                         printPolytet(runningLeastPolytet[0].value, polytet);
                     }
 #endif
