@@ -26,6 +26,9 @@
     #define _countof(a) (sizeof(a)/sizeof(*(a)))
 #endif
 
+template <size_t size> char (*__strlength_helper(char const (&_String)[size]))[size];
+#define strlength(_String) (sizeof(*__strlength_helper(_String))-1)
+
 auto startTime = std::chrono::steady_clock::now();
 
 void quitMemory()
@@ -312,6 +315,13 @@ Coord3 operator+(const Coord3 &a, const Coord3 &b)
     c[2] = a[2] + b[2];
     return c;
 }
+Coord3 &operator+=(Coord3 &a, const Coord3 &b)
+{
+    a[0] += b[0];
+    a[1] += b[1];
+    a[2] += b[2];
+    return a;
+}
 Coord3 operator-(const Coord3 &a, const Coord3 &b)
 {
     Coord3 c;
@@ -327,6 +337,13 @@ Coord3 operator*(const Coord3 &a, const Coord b)
     c[1] = a[1] * b;
     c[2] = a[2] * b;
     return c;
+}
+Coord3 &operator/=(Coord3 &a, uint64_t b)
+{
+    a[0] /= b;
+    a[1] /= b;
+    a[2] /= b;
+    return a;
 }
 Coord dot(const Coord3 &a, const Coord3 &b)
 {
@@ -697,10 +714,42 @@ CompressedSubpolytet reflectCompressedPath(CompressedSubpolytet compressedPath)
 }
 
 #ifdef USE_GMP
-#   if defined(DISABLE_OVERLAP_CHECKING) && (defined(PRINT_POLYTETS) || defined(PRINT_POLYTETS_EDGE_CASES) || defined(PRINT_POLYTETS_WITH_SYMMETRY))
-#       error Cannot print polytets with overlap checking disabled
-#   endif
 mpz_t printCenter[3], printTmp[3];
+#else
+std::ostream &operator<<(std::ostream &dst, __int128 value)
+{
+    std::ostream::sentry s(dst);
+    if (s)
+    {
+        char buf[strlength("-170141183460469231731687303715884105727") + 1];
+        char *p = buf + _countof(buf);
+        *--p = '\0';
+        __int128 x = value;
+        bool negative = x < 0;
+        if (negative)
+        {
+            if ((x << 1) == 0)
+            {
+                *--p = '8';
+                x = -(x + 1);
+                goto div10;
+            }
+            x = -x;
+        }
+        do
+        {
+            *--p = '0' + x % 10;
+        div10:
+            x /= 10;
+        }
+        while (x != 0);
+        if (negative)
+            *--p = '-';
+        dst << p;
+    }
+    return dst;
+}
+#endif
 void printPolytet(CompressedPolytetBits value, Polytet &polytet,
     const char *valuePrefix="", const char *valueSuffix="\n", bool nestedParens=true, const char *openParen="{", const char *closeParen="}")
 {
@@ -712,6 +761,7 @@ void printPolytet(CompressedPolytetBits value, Polytet &polytet,
 #endif
     std::cout << valueSuffix;
     bool first = true;
+#ifdef USE_GMP
     for (int d=0; d<3; d++)
         mpz_set_ui(printCenter[d], 0);
     for (int i=0; i<polytet.size(); i++)
@@ -720,6 +770,13 @@ void printPolytet(CompressedPolytetBits value, Polytet &polytet,
                 mpz_add(printCenter[d], printCenter[d], polytet[i].t.t[p][d]);
     for (int d=0; d<3; d++)
         mpz_div_ui(printCenter[d], printCenter[d], polytet.size() * 4);
+#else
+    Coord3 printCenter = {{0, 0, 0}};
+    for (int i=0; i<polytet.size(); i++)
+        for (int p=0; p<4; p++)
+            printCenter += polytet[i].t[p];
+    printCenter /= polytet.size() * 4;
+#endif
     for (int i=0; i<polytet.size(); i++)
     {
         fputs(first ? (nestedParens ? openParen : "") : ",\n", stdout);
@@ -727,16 +784,20 @@ void printPolytet(CompressedPolytetBits value, Polytet &polytet,
         if (nestedParens) std::cout << openParen;
         for (int p=0; p<4; p++)
         {
+#ifdef USE_GMP
             for (int d=0; d<3; d++)
                 mpz_sub(printTmp[d], polytet[i].t.t[p][d], printCenter[d]);
             gmp_printf("%s%s%Zd, %Zd, %Zd%s", p ? ", " : "", openParen, printTmp[0], printTmp[1], printTmp[2], closeParen);
+#else
+            Coord3 printTmp = polytet[i].t[p] - printCenter;
+            std::cout << (p ? ", " : "") << openParen << printTmp[0] << ", " << printTmp[1] << ", " << printTmp[2] << closeParen;
+#endif
         }
         if (nestedParens) std::cout << closeParen;
     }
     if (nestedParens) std::cout << closeParen;
     std::cout << std::endl << std::endl;
 }
-#endif
 
 #define OVERLAP_BITMAP_FILENAME "polytets_overlap.bin"
 
@@ -1134,7 +1195,7 @@ void enumerate(
                     }
 #endif // DISABLE_OVERLAP_CHECKING
                     // No overlap found, so add runningLeastPolytet[0].value to hash table and chiral count
-#if defined(USE_GMP) && defined(PRINT_POLYTETS) && !defined(PRINT_POLYTETS_WITH_SYMMETRY)
+#if defined(PRINT_POLYTETS) && !defined(PRINT_POLYTETS_WITH_SYMMETRY)
                     {
                         boost::mutex::scoped_lock lock(printPolytetMutex);
                         printPolytet(runningLeastPolytet[0].value, polytet);
