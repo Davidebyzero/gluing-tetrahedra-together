@@ -61,23 +61,23 @@ typedef uint64_t CompressedSubpolytet; // compressed in branchless format, in bi
 class Tetrahedron
 {
 public:
-    mpz_t t[4][3];
+    mpz_t t[5][3];
     Tetrahedron &operator=(const Tetrahedron &_t)
     {
-        for (int p=0; p<4; p++)
+        for (int p=0; p<5; p++)
             for (int d=0; d<3; d++)
                 mpz_set(t[p][d], _t.t[p][d]);
         return *this;
     }
     Tetrahedron()
     {
-        for (int p=0; p<4; p++)
+        for (int p=0; p<5; p++)
             for (int d=0; d<3; d++)
                 mpz_init(t[p][d]);
     }
     ~Tetrahedron()
     {
-        for (int p=0; p<4; p++)
+        for (int p=0; p<5; p++)
             for (int d=0; d<3; d++)
                 mpz_clear(t[p][d]);
     }
@@ -85,7 +85,7 @@ public:
 #else
 typedef __int128 Coord;
 typedef std::array<Coord, 3> Coord3;
-typedef std::array<Coord3, 4> Tetrahedron;
+typedef std::array<Coord3, 5> Tetrahedron; // 5th point is the center (mean of all 4 vertices)
 #endif
 
 // vertex indices of faces with identical chirality
@@ -176,23 +176,28 @@ public:
         {
 #ifdef USE_GMP
             mpz_t *newVertex = t.t.t[0];
-            // Get center of face by averaging its vertices' coordinates.
+            // Get center of face by averaging its vertices' coordinates, without dividing by 3 yet.
             for (int d=0; d<3; d++)
                 mpz_set(newVertex[d], tetToAttachTo.t.t[tetrahedronFaces[faceNum][0]][d]);
             for (int p=1; p<3; p++)
                 for (int d=0; d<3; d++)
                     mpz_add(newVertex[d], newVertex[d], tetToAttachTo.t.t[tetrahedronFaces[faceNum][p]][d]);
-            // Finalize the new vertex
             for (int d=0; d<3; d++)
             {
+                // Copy the calculated face center into the tetrahedron center
+                mpz_set(t.t.t[4][d], newVertex[d]);
+                // Finalize the new vertex
                 mpz_div_ui(newVertex[d], newVertex[d], 3);
                 mpz_mul_ui(newVertex[d], newVertex[d], 2);
                 mpz_sub   (newVertex[d], newVertex[d], tetToAttachTo.t.t[3 - faceNum][d]);
+                // Finish calculating the center
+                mpz_add   (t.t.t[4][d], t.t.t[4][d], newVertex[d]);
+                mpz_div_ui(t.t.t[4][d], t.t.t[4][d], 4);
             }
 #else
             Coord3 &newVertex = t.t[0];
             newVertex = {{0, 0, 0}};
-            // Get center of face by averaging its vertices' coordinates.
+            // Get center of face by averaging its vertices' coordinates, without dividing by 3 yet.
             for (int p=0; p<4; p++)
             {
                 if (p == 3 - faceNum)
@@ -200,9 +205,15 @@ public:
                 for (int d=0; d<3; d++)
                     newVertex[d] += tetToAttachTo.t[p][d];
             }
-            // Finalize the new vertex
             for (int d=0; d<3; d++)
+            {
+                // Copy the calculated face center into the tetrahedron center
+                t.t[4][d] = newVertex[d];
+                // Finalize the new vertex
                 newVertex[d] = newVertex[d]/3 * 2 - tetToAttachTo.t[3 - faceNum][d];
+                // Finish calculating the center
+                t.t[4][d] = (t.t[4][d] + newVertex[d]) / 4;
+            }
 #endif
             // Copy the other vertices
             for (int p=0; p<3; p++)
@@ -333,7 +344,7 @@ public:
 #ifdef USE_GMP
 private:
     mpz_t intersectNumerator, intersectDenominator, uNumerator, vNumerator, uvDenominator, uvNumeratorSum;
-    mpz_t center[3], normal[3], tmp[3], p0p1[3], intersectionPoint[3], delta[3], edge1[3], edge2[3];
+    mpz_t displacement[3], center[3], normal[3], tmp[3], p0p1[3], intersectionPoint[3], delta[3], edge1[3], edge2[3];
     mpz_t triangle[3][3];
     void dot(mpz_t &result, const mpz_t _a[3], const mpz_t _b[3])
     {
@@ -345,7 +356,7 @@ private:
     {
         MPZ_CALLS(intersectNumerator, intersectDenominator, uNumerator, vNumerator, uvDenominator, uvNumeratorSum, NULL);
         for (int d=0; d<3; d++)
-            MPZ_CALLS(center[d], normal[d], tmp[d], p0p1[d], intersectionPoint[d], delta[d], edge1[d], edge2[d], NULL);
+            MPZ_CALLS(displacement[d], center[d], normal[d], tmp[d], p0p1[d], intersectionPoint[d], delta[d], edge1[d], edge2[d], NULL);
         for (int p=0; p<3; p++)
             for (int d=0; d<3; d++)
                 MPZ_CALL(triangle[p][d]);
@@ -356,18 +367,11 @@ public:
     int8_t operator()(const mpz_t maximalTouchingSqrDistance)
     {
         // Skip the longer overlap checking algorithm if the two tetrahedrons' centers are sufficiently separated.
+        // Subtract center of tetrahedron "b" from center of tetrahedron "a".
         for (int d=0; d<3; d++)
-        {
-            // Get center of tetrahedron "a" by averaging its vertices' coordinates, without dividing by 4.
-            mpz_set(center[d], a->t.t[0][d]);
-            for (int p=1; p<4; p++)
-                mpz_add(center[d], center[d], a->t.t[p][d]);
-            // Subtract center of tetrahedron "b" by averaging its vertices' coordinates, without dividing by 4.
-            for (int p=0; p<4; p++)
-                mpz_sub(center[d], center[d], b->t.t[p][d]);
-        }
+            mpz_sub(displacement[d], a->t.t[4][d], b->t.t[4][d]);
         // Compare the sum of the squares of the orthogonal distances against the threshold squared distance.
-        dot(tmp[0], center, center);
+        dot(tmp[0], displacement, displacement);
         if (mpz_cmp(tmp[0], maximalTouchingSqrDistance) >= 0)
             return false;
 
@@ -479,19 +483,13 @@ public:
     {
         // Skip the longer overlap checking algorithm if the two tetrahedrons' centers are sufficiently separated.
         {
-            // Get center of tetrahedron "a" by averaging its vertices' coordinates, without dividing by 4.
-            Coord3 center = {0, 0, 0};
-            for (int p=0; p<4; p++)
-                for (int d=0; d<3; d++)
-                    center[d] += a->t[p][d];
-            // Subtract center of tetrahedron "b" by averaging its vertices' coordinates, without dividing by 4.
-            for (int p=0; p<4; p++)
-                for (int d=0; d<3; d++)
-                    center[d] -= b->t[p][d];
+            // Subtract center of tetrahedron "b" from center of tetrahedron "a".
+            Coord3 displacement = a->t[4] - b->t[4];
             // Compare the sum of the squares of the orthogonal distances against the threshold squared distance.
-            if (dot(center, center) >= maximalTouchingSqrDistance)
+            if (dot(displacement, displacement) >= maximalTouchingSqrDistance)
                 return false;
         }
+
         int8_t edgeEdgeIntersectionCount[4] = {}; // number of edges found to intersect with each face
         // In some circumstances, two tetrahedrons can intersect such that only the edges of one tetrahedron intersect with the
         // faces of the other, and not the other way around. So we need to check both.
@@ -1203,21 +1201,20 @@ int main(int argc, char *argv[])
     }
     // The maximum distance between two touching congruent regular tetrahedrons is twice the radius (distance between the center of a tetrahedron and one of its vertices)
     const unsigned MAXIMAL_TOUCHING_SQR_DISTANCE =
-        9*9    // squared coordinate of "start" tetrahedron
+        36*36  // squared coordinate of "start" tetrahedron
         * 3    // number of dimensions
-        * 4*4  // squared number of vertices (to avoid dividing by 4 when averaging to get center coordinates)
         * 2*2; // twice the radius, so we square that too
     initLookupTables();
 #ifdef USE_GMP
     Tetrahedron start;
     for (int d=0; d<3; d++)
     {
-        mpz_set_si(start.t[0][d], -9);
+        mpz_set_si(start.t[0][d], -36);
         for (int p=1; p<4; p++)
-            mpz_set_si(start.t[p][d], 9);
+            mpz_set_si(start.t[p][d], 36);
     }
     for (int p=1; p<4; p++)
-        mpz_set_si(start.t[p][p-1], -9);
+        mpz_set_si(start.t[p][p-1], -36);
     mpz_t      maximalTouchingSqrDistance;
     mpz_init  (maximalTouchingSqrDistance);
     mpz_set_ui(maximalTouchingSqrDistance, MAXIMAL_TOUCHING_SQR_DISTANCE);
@@ -1226,10 +1223,11 @@ int main(int argc, char *argv[])
 #else
     static Tetrahedron start =
     {{
-        {{-9,-9,-9}},
-        {{-9, 9, 9}},
-        {{ 9,-9, 9}},
-        {{ 9, 9,-9}}
+        {{-36,-36,-36}},
+        {{-36, 36, 36}},
+        {{ 36,-36, 36}},
+        {{ 36, 36,-36}},
+        {{  0,  0,  0}}
     }};
     static Coord maximalTouchingSqrDistance = MAXIMAL_TOUCHING_SQR_DISTANCE;
 #endif
