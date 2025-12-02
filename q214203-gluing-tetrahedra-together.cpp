@@ -393,14 +393,17 @@ public:
             // Don't count it if only the endpoint of an edge intersects.
             // Since it's guaranteed that due to the overlapCache, both tetrahedrons are single-attached end pieces, and all
             // collisions with nearer pieces are already cached, we can safely skip face[3]
+            for (int i=0; i<3; i++)
+                for (int d=0; d<3; d++)
+                    mpz_sub(face[i][d], a->t.t[i + 1][d], a->t.t[4][d]);
             for (int faceNum=0; faceNum<3; faceNum++)
             {
-                for (int i=0; i<3; i++)
+                int oldV[3] =
                 {
-                    int vertexNum = (faceNum + i) % 3 + 1;
-                    for (int d=0; d<3; d++)
-                        mpz_sub(face[i][d], a->t.t[vertexNum][d], a->t.t[4][d]);
-                }
+                     faceNum,
+                    (faceNum + 1) % 3,
+                    (faceNum + 2) % 3
+                };
                 for (int edgeNum=0; edgeNum<3; edgeNum++)
                 {
                     for (int d=0; d<3; d++)
@@ -409,8 +412,8 @@ public:
                         mpz_sub(q[d], b->t.t[0          ][d], a->t.t[0][d]);
                     }
 
-                    dot(pdot, face[0], p);
-                    dot(qdot, face[0], q);
+                    dot(pdot, face[oldV[0]], p);
+                    dot(qdot, face[oldV[0]], q);
 
                     // Check if the signs differ
                     if ((mpz_sgn(pdot) ^ mpz_sgn(qdot)) < 0)
@@ -431,8 +434,8 @@ public:
                                 mpz_sub(intersect[d], q[d], p[d]);
                         }
 
-                        dot(uNumerator, face[1], intersect);
-                        dot(vNumerator, face[2], intersect);
+                        dot(uNumerator, face[oldV[1]], intersect);
+                        dot(vNumerator, face[oldV[2]], intersect);
                         if (mpz_cmp(pdot, qdot) > 0)
                             mpz_sub(absDiff, pdot, qdot);
                         else
@@ -482,21 +485,27 @@ public:
             // Don't count it if only the endpoint of an edge intersects.
             // Since it's guaranteed that due to the overlapCache, both tetrahedrons are single-attached end pieces, and all
             // collisions with nearer pieces are already cached, we can safely skip face[3]
+            Coord3 face[3] =
+            {
+                a->t[1] - a->t[4],
+                a->t[2] - a->t[4],
+                a->t[3] - a->t[4]
+            };
             for (int faceNum=0; faceNum<3; faceNum++)
             {
-                Coord3 face[3] =
+                Coord3 *oldV[3] =
                 {
-                    a->t[ faceNum      % 3 + 1] - a->t[4],
-                    a->t[(faceNum + 1) % 3 + 1] - a->t[4],
-                    a->t[(faceNum + 2) % 3 + 1] - a->t[4]
+                    &face[ faceNum         ],
+                    &face[(faceNum + 1) % 3],
+                    &face[(faceNum + 2) % 3]
                 };
                 for (int edgeNum=0; edgeNum<3; edgeNum++)
                 {
                     Coord3 p = b->t[edgeNum + 1] - a->t[0];
                     Coord3 q = b->t[0          ] - a->t[0];
 
-                    Coord pdot = dot(face[0], p);
-                    Coord qdot = dot(face[0], q);
+                    Coord pdot = dot(*oldV[0], p);
+                    Coord qdot = dot(*oldV[0], q);
 
                     // Check if the signs differ
                     if ((pdot ^ qdot) < 0)
@@ -505,8 +514,8 @@ public:
                             p * qdot - q * pdot :
                             q * pdot - p * qdot;
 
-                        Coord uNumerator = dot(face[1], intersect);
-                        Coord vNumerator = dot(face[2], intersect);
+                        Coord uNumerator = dot(*oldV[1], intersect);
+                        Coord vNumerator = dot(*oldV[2], intersect);
                         Coord absDiff = pdot > qdot ? pdot - qdot : qdot - pdot;
                         Coord uvNumeratorSum = uNumerator + vNumerator, uvDenominator = sdot * absDiff;
 
