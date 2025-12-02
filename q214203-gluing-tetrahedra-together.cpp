@@ -1308,6 +1308,11 @@ int main(int argc, char *argv[])
     static Coord maximalTouchingSqrDistance = MAXIMAL_TOUCHING_SQR_DISTANCE;
 #endif
 
+    decltype(startTime) currentTime;
+#ifdef MULTITHREADING
+    std::thread workers[WORKER_THREADS];
+#endif
+
 #ifndef DISABLE_OVERLAP_CHECKING
     int8_t *overlapCache; // A bitmap (packed booleans) was tried, and was a bit slower; so, we'll use 8 times as much RAM to get slightly better speed.
                           // But now, we're benefitting from using bytes anyway, because during precomputing, a negative value indicates "no overlap".
@@ -1391,7 +1396,6 @@ int main(int argc, char *argv[])
         if (!pool) quitMemory();
     }
 
-    decltype(startTime) currentTime;
 #ifndef DISABLE_OVERLAP_CHECKING
     // Precompute overlapCache
     {
@@ -1516,8 +1520,6 @@ int main(int argc, char *argv[])
 #endif // !DISABLE_OVERLAP_CHECKING
 
 #ifdef MULTITHREADING
-    std::thread workers[WORKER_THREADS];
-
     memset(polytetChiralCount, 0, sizeof(polytetChiralCount));
 #else
     polytetChiralCount = 0;
