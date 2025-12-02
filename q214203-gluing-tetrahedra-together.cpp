@@ -1331,6 +1331,9 @@ int main(int argc, char *argv[])
     size_t polytetCount = 1;
     size_t memoryUsage = 0;
 
+    struct {void *start, *end;} zeroesNeeded[2];
+    zeroesNeeded[0].start = NULL;
+
     int tetCount=1;
     bool resumedFromFile = false;
 #ifdef MULTITHREADING
@@ -1639,7 +1642,20 @@ int main(int argc, char *argv[])
         const int polytetTableElementSize = newPolytetsCompressedSize + sizeof(HashIndex);
         polytetTableMaxSize = ((uint8_t*)pool + poolSize - (uint8_t*)nextHashCollisionTable) / polytetTableElementSize;
         polytetTable = nextHashCollisionTable + polytetTableMaxSize;
-        memset(hashTable, 0, hashTableSize * sizeof(HashIndex));
+
+        // Initialize nextHashCollisionTable with zeroes here so that it doesn't have to be individually done for each new entry
+        // (which would reduce the efficieny of CPU caching). Also might as well combine the hashTable initialization into this.
+        if (zeroesNeeded[0].start)
+        {
+            for (int i=0; i<_countof(zeroesNeeded); i++)
+            {
+                if (zeroesNeeded[i].start < hashTable)
+                    zeroesNeeded[i].start = hashTable;
+                auto diff = (intptr_t)((uint8_t*)zeroesNeeded[i].end - (uint8_t*)zeroesNeeded[i].start);
+                if (diff > 0)
+                    memset(zeroesNeeded[i].start, 0, diff);
+            }
+        }
         size_t newPolytetCount = 0;
 
         size_t nextWorkAssignment = 0;
@@ -1713,12 +1729,18 @@ int main(int argc, char *argv[])
             (polytetTable, newPolytetCount, newPolytetsCompressedSize, sorter, (void*)(size_t)newPolytetsCompressedSize);
 #endif
 
+        zeroesNeeded[0].start = basePolytetTable;
+        zeroesNeeded[0].end   = nextHashCollisionTable + newPolytetCount;
+
         polytetCount = newPolytetCount;
-        memmove(basePolytetTable, polytetTable, polytetCount * newPolytetsCompressedSize);
-        memset (nextHashCollisionTable, 0,      polytetCount * sizeof(HashIndex)); // initialize this here so that it doesn't have to be individually done for each new entry
+        auto polytetByteCount = polytetCount * newPolytetsCompressedSize;
+        memmove(basePolytetTable, polytetTable, polytetByteCount);
+
+        zeroesNeeded[1].start =           polytetTable;
+        zeroesNeeded[1].end   = (uint8_t*)polytetTable + polytetByteCount;
 
 #ifdef WRITE_TO_FILES
-        writeFile(getCompressedPolytetFilename(tetCount), basePolytetTable, polytetCount * newPolytetsCompressedSize);
+        writeFile(getCompressedPolytetFilename(tetCount), basePolytetTable, polytetByteCount);
 #endif
 
         resumedFromFile = false;
