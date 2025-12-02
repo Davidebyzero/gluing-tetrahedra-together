@@ -1070,15 +1070,15 @@ void enumerate(
 #endif
 
     const int tetCount,
-    void *&pool,
-    size_t &poolSize,
-    const uint8_t *&basePolytetTable,
+    void *const pool,
+    const size_t poolSize,
+    const uint8_t *const basePolytetTable,
     const int basePolytetCompressedSize,
     const size_t polytetCount,
 
-    HashIndex *&hashTable,
+    HashIndex *const hashTable,
     const size_t hashTableSize,
-    void *&polytetTable,
+    void *const polytetTable,
     const int newPolytetsCompressedSize,
     const int polytetTableElementSize,
 
@@ -1641,8 +1641,8 @@ int main(int argc, char *argv[])
 #ifndef DISABLE_OVERLAP_CHECKING
                 overlapCache,
 #endif
-                tetCount, std::ref(pool), std::ref(poolSize), std::ref((const uint8_t *&)basePolytetTable), basePolytetCompressedSize, polytetCount,
-                std::ref(hashTable), hashTableSize, std::ref(polytetTable), newPolytetsCompressedSize, polytetTableElementSize,
+                tetCount, pool, poolSize, (const uint8_t *)basePolytetTable, basePolytetCompressedSize, polytetCount,
+                hashTable, hashTableSize, polytetTable, newPolytetsCompressedSize, polytetTableElementSize,
                 std::ref(newPolytetCount), std::ref(polytetChiralCount[threadID])
     #ifdef PRINT_SYMMETRY_TOTALS
                 , polytetSymmetryCount[threadID]
@@ -1658,7 +1658,7 @@ int main(int argc, char *argv[])
 #ifndef DISABLE_OVERLAP_CHECKING
             overlapCache,
 #endif
-            tetCount, pool, poolSize, (const uint8_t *&)basePolytetTable, basePolytetCompressedSize, polytetCount,
+            tetCount, pool, poolSize, (const uint8_t *)basePolytetTable, basePolytetCompressedSize, polytetCount,
             hashTable, hashTableSize, polytetTable, newPolytetsCompressedSize, polytetTableElementSize,
             newPolytetCount, polytetChiralCount
     #ifdef PRINT_SYMMETRY_TOTALS
