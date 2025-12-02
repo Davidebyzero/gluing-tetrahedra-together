@@ -1345,6 +1345,7 @@ int main(int argc, char *argv[])
 #   endif
 #endif
 #ifdef RESUME_FROM_FILE
+    bool overlapCacheResumed = false;
     {
         FILE *resumeFile = NULL;
         const char *filename;
@@ -1378,14 +1379,14 @@ int main(int argc, char *argv[])
             int polytetsCompressedSize = ((tetCount - 2) * 3 + 8-1) / 8;
             polytetCount = size / polytetsCompressedSize;
             if (!readAndCloseOpenedFile(resumeFile, (uint8_t*)pool, size)
-#ifndef DISABLE_OVERLAP_CHECKING
-                || !readFile(filename = OVERLAP_BITMAP_FILENAME, (uint8_t*)overlapCache, overlapCacheSize)
-#endif
                 )
             {
                 std::cerr << "Error reading file \"" << filename << "\"" << std::endl;
                 goto errorQuit;
             }
+#ifndef DISABLE_OVERLAP_CHECKING
+            overlapCacheResumed = readFile(filename = OVERLAP_BITMAP_FILENAME, (uint8_t*)overlapCache, overlapCacheSize);
+#endif
             resumedFromFile = true;
         }
     }
@@ -1516,7 +1517,12 @@ int main(int argc, char *argv[])
     writeFile(OVERLAP_BITMAP_FILENAME, (uint8_t*)overlapCache, overlapCacheSize);
 #endif
     currentTime = std::chrono::steady_clock::now();
-    std::cout << "Precomputed overlap cache [" << std::chrono::duration_cast<std::chrono::milliseconds>(currentTime - startTime).count() << " ms]" << std::endl;
+    std::cout << "Precomputed overlap cache ";
+#ifdef RESUME_FROM_FILE
+    if (overlapCacheResumed)
+        std::cout << "(resumed) ";
+#endif
+    std::cout << "[" << std::chrono::duration_cast<std::chrono::milliseconds>(currentTime - startTime).count() << " ms]" << std::endl;
 #endif // !DISABLE_OVERLAP_CHECKING
 
 #ifdef MULTITHREADING
