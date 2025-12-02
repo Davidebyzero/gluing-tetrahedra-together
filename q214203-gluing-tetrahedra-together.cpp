@@ -60,6 +60,12 @@ typedef uint64_t CompressedSubpolytet; // compressed in branchless format, in bi
 #ifdef USE_GMP
 class Tetrahedron
 {
+    void init()
+    {
+        for (int p=0; p<5; p++)
+            for (int d=0; d<3; d++)
+                mpz_init(t[p][d]);
+    }
 public:
     mpz_t t[5][3];
     Tetrahedron &operator=(const Tetrahedron &_t)
@@ -71,9 +77,12 @@ public:
     }
     Tetrahedron()
     {
-        for (int p=0; p<5; p++)
-            for (int d=0; d<3; d++)
-                mpz_init(t[p][d]);
+        init();
+    }
+    Tetrahedron(const Tetrahedron &_t)
+    {
+        init();
+        *this = _t;
     }
     ~Tetrahedron()
     {
@@ -1236,7 +1245,7 @@ int main(int argc, char *argv[])
                 resumeFile = f;
                 tetCount = i;
 #if defined(PRINT_POLYTETS) || defined(PRINT_POLYTETS_WITH_SYMMETRY)
-                mul_start_3(start, maximalTouchingSqrDistance, minUnseenCompressedSubpolytet);
+                mul_start_3(start, maximalTouchingSqrDistance);
 #endif
             }
             else
@@ -1281,8 +1290,14 @@ int main(int argc, char *argv[])
     // Precompute overlapCache
     {
 #if defined(PRINT_POLYTETS) || defined(PRINT_POLYTETS_WITH_SYMMETRY)
-        auto start2 = start;
+        Tetrahedron start2(start);
+    #ifdef USE_GMP
+        mpz_t maximalTouchingSqrDistance2;
+        mpz_init(maximalTouchingSqrDistance2);
+        mpz_set (maximalTouchingSqrDistance2, maximalTouchingSqrDistance);
+    #else
         auto maximalTouchingSqrDistance2 = maximalTouchingSqrDistance;
+    #endif
 #else
         auto &start2 = start;
         auto &maximalTouchingSqrDistance2 = maximalTouchingSqrDistance;
@@ -1290,7 +1305,7 @@ int main(int argc, char *argv[])
         for (int i=5; i<MAXIMUM_TETCOUNT; i+=2)
             mul_start_3(start2, maximalTouchingSqrDistance2);
         Polytet polytet;
-        polytet.init<true>(start);
+        polytet.init<true>(start2);
         int tetCount = 2, topCount = 1, bottomCount = 1;
         int8_t faceNumStack[MAXIMUM_TETCOUNT];
         int stackPos = 0;
@@ -1383,6 +1398,9 @@ int main(int argc, char *argv[])
                 faceNumStack[++stackPos] = -1;
             }
         }
+#if defined(USE_GMP) && (defined(PRINT_POLYTETS) || defined(PRINT_POLYTETS_WITH_SYMMETRY))
+        mpz_clear(maximalTouchingSqrDistance2);
+#endif
     }
 #ifdef WRITE_TO_FILES
     writeFile(OVERLAP_BITMAP_FILENAME, (uint8_t*)overlapCache, overlapCacheSize);
@@ -1564,7 +1582,7 @@ int main(int argc, char *argv[])
 
         resumedFromFile = false;
 #if defined(PRINT_POLYTETS) || defined(PRINT_POLYTETS_WITH_SYMMETRY)
-        mul_start_3(start, maximalTouchingSqrDistance, minUnseenCompressedSubpolytet);
+        mul_start_3(start, maximalTouchingSqrDistance);
 #endif
     }
 
