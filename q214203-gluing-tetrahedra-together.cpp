@@ -1714,8 +1714,8 @@ int main(int argc, char *argv[])
 #endif
 
         polytetCount = newPolytetCount;
-        memmove(basePolytetTable, polytetTable, newPolytetCount * newPolytetsCompressedSize);
-        memset (nextHashCollisionTable, 0,      newPolytetCount * sizeof(HashIndex)); // initialize this here so that it doesn't have to be individually done for each new entry
+        memmove(basePolytetTable, polytetTable, polytetCount * newPolytetsCompressedSize);
+        memset (nextHashCollisionTable, 0,      polytetCount * sizeof(HashIndex)); // initialize this here so that it doesn't have to be individually done for each new entry
 
 #ifdef WRITE_TO_FILES
         writeFile(getCompressedPolytetFilename(tetCount), basePolytetTable, polytetCount * newPolytetsCompressedSize);
