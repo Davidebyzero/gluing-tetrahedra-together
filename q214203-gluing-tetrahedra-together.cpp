@@ -395,10 +395,9 @@ public:
             // collisions with nearer pieces are already cached, we can safely skip face[3]
             for (int faceNum=0; faceNum<3; faceNum++)
             {
-                static const int vertexRemap[4] = {1, 2, 3, 0};
                 for (int i=0; i<3; i++)
                 {
-                    int vertexNum = vertexRemap[(faceNum + i) % 3];
+                    int vertexNum = (faceNum + i) % 3 + 1;
                     for (int d=0; d<3; d++)
                         mpz_sub(face[i][d], a->t.t[vertexNum][d], a->t.t[4][d]);
                 }
@@ -406,8 +405,8 @@ public:
                 {
                     for (int d=0; d<3; d++)
                     {
-                        mpz_sub(p[d], b->t.t[vertexRemap[edgeNum]][d], a->t.t[vertexRemap[3]][d]);
-                        mpz_sub(q[d], b->t.t[vertexRemap[3      ]][d], a->t.t[vertexRemap[3]][d]);
+                        mpz_sub(p[d], b->t.t[edgeNum + 1][d], a->t.t[0][d]);
+                        mpz_sub(q[d], b->t.t[0          ][d], a->t.t[0][d]);
                     }
 
                     dot(pdot, face[0], p);
@@ -485,17 +484,16 @@ public:
             // collisions with nearer pieces are already cached, we can safely skip face[3]
             for (int faceNum=0; faceNum<3; faceNum++)
             {
-                static const int vertexRemap[4] = {1, 2, 3, 0};
                 Coord3 face[3] =
                 {
-                    a->t[vertexRemap[ faceNum      % 3]] - a->t[4],
-                    a->t[vertexRemap[(faceNum + 1) % 3]] - a->t[4],
-                    a->t[vertexRemap[(faceNum + 2) % 3]] - a->t[4]
+                    a->t[ faceNum      % 3 + 1] - a->t[4],
+                    a->t[(faceNum + 1) % 3 + 1] - a->t[4],
+                    a->t[(faceNum + 2) % 3 + 1] - a->t[4]
                 };
                 for (int edgeNum=0; edgeNum<3; edgeNum++)
                 {
-                    Coord3 p = b->t[vertexRemap[edgeNum]] - a->t[vertexRemap[3]];
-                    Coord3 q = b->t[vertexRemap[3]]       - a->t[vertexRemap[3]];
+                    Coord3 p = b->t[edgeNum + 1] - a->t[0];
+                    Coord3 q = b->t[0          ] - a->t[0];
 
                     Coord pdot = dot(face[0], p);
                     Coord qdot = dot(face[0], q);
