@@ -1226,10 +1226,10 @@ void enumerate(
                         polytetChiralCount += isChiral;
                         memcpy(entry, &runningLeastPolytet[0].value, newPolytetsCompressedSize);
 #ifdef MULTITHREADING
-                        nextHashCollisionTable[newPolytetCountFetched] = 0; // pointer to next hash collision
+                        //nextHashCollisionTable[newPolytetCountFetched] = 0; // unnecessary thanks to the "memset(nextIndexTable, ...)"
                         *index =               newPolytetCountFetched + 1;
 #else
-                        nextHashCollisionTable[newPolytetCount       ] = 0; // pointer to next hash collision
+                        //nextHashCollisionTable[newPolytetCount       ] = 0; // unnecessary thanks to the "memset(nextIndexTable, ...)"
                         *index =             ++newPolytetCount;
 #endif
                     }
@@ -1364,7 +1364,7 @@ int main(int argc, char *argv[])
             poolSize = size;
             if (poolSize < MEMORY_POOL_INITIAL_SIZE)
                 poolSize = MEMORY_POOL_INITIAL_SIZE;
-            pool = malloc(poolSize);
+            pool = calloc(poolSize, 1);
             if (!pool)
             {
                 fclose(resumeFile);
@@ -1387,7 +1387,7 @@ int main(int argc, char *argv[])
     if (!pool)
 #endif
     {
-        pool = malloc(poolSize = MEMORY_POOL_INITIAL_SIZE);
+        pool = calloc(poolSize = MEMORY_POOL_INITIAL_SIZE, 1); // use calloc() so that nextIndexTable[] is zero-initialized
         if (!pool) quitMemory();
     }
 
@@ -1683,7 +1683,8 @@ int main(int argc, char *argv[])
         memoryUsage = (uint8_t*)nextHashCollisionTable + newPolytetCount * polytetTableElementSize - (uint8_t*)pool;
 
         polytetCount = newPolytetCount;
-        memmove(basePolytetTable, polytetTable, newPolytetsCompressedSize * newPolytetCount);
+        memmove(basePolytetTable, polytetTable, newPolytetCount * newPolytetsCompressedSize);
+        memset (nextHashCollisionTable, 0,      newPolytetCount * sizeof(HashIndex)); // initialize this here so that it doesn't have to be individually done for each new entry
 
 #ifdef WRITE_TO_FILES
         writeFile(getCompressedPolytetFilename(tetCount), basePolytetTable, polytetCount * newPolytetsCompressedSize);
