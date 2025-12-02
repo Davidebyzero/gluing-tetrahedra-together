@@ -561,10 +561,8 @@ public:
                         continue;
                     Coord uvNumeratorSum = uNumerator + vNumerator;
                     if (uvNumeratorSum == uvDenominator)
-                    {
                         edgeEdgeIntersectionCount[faceNum]++;
-                        return true;
-                    }
+                    else
                     if (uvNumeratorSum <  uvDenominator)
                         return true;
                 }
