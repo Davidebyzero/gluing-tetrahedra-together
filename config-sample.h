@@ -15,6 +15,7 @@
 
 #define MAXIMUM_TETCOUNT 17 // 28
 
+//#define SORT_POLYTETS
 //#define WRITE_TO_FILES
 //#define RESUME_FROM_FILE
 

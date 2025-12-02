@@ -1682,6 +1682,29 @@ int main(int argc, char *argv[])
 
         memoryUsage = (uint8_t*)nextHashCollisionTable + newPolytetCount * polytetTableElementSize - (uint8_t*)pool;
 
+#ifdef SORT_POLYTETS
+    #if defined(__GLIBC__) || defined(_WIN32) || defined(_MSC_VER) || defined(__MINGW32__)
+        auto sorter = [](void *context, const void *_a, const void *_b) -> int
+    #elif defined(__APPLE__) || defined(__FreeBSD__) || defined(__NetBSD__) || defined(__OpenBSD__)
+        auto sorter = [](const void *_a, const void *_b, void *context) -> int
+    #else
+        #error qsort_s() not available or calling convention unknown
+    #endif
+        {
+            size_t newPolytetsCompressedSize = (size_t)context;
+            CompressedPolytetBits a=0, b=0;
+            memcpy(&a, _a, newPolytetsCompressedSize);
+            memcpy(&b, _b, newPolytetsCompressedSize);
+            return sign((CompressedPolytetBitsSigned)a - (CompressedPolytetBitsSigned)b);
+        };
+    #if defined(_WIN32) || defined(_MSC_VER) || defined(__MINGW32__)
+        qsort_s
+    #else
+        qsort_r
+    #endif
+            (polytetTable, newPolytetCount, newPolytetsCompressedSize, sorter, (void*)(size_t)newPolytetsCompressedSize);
+#endif
+
         polytetCount = newPolytetCount;
         memmove(basePolytetTable, polytetTable, newPolytetCount * newPolytetsCompressedSize);
         memset (nextHashCollisionTable, 0,      newPolytetCount * sizeof(HashIndex)); // initialize this here so that it doesn't have to be individually done for each new entry
