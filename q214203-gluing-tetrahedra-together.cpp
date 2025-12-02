@@ -380,7 +380,7 @@ public:
             return false;
 
         const unsigned multiplier = 4;
-        mpz_div_ui(sdot, maximalTouchingSqrDistance, 3 * 2);
+        mpz_div_ui(sdot, maximalTouchingSqrDistance, 3);
         int8_t edgeEdgeIntersectionCount[4] = {}; // number of edges found to intersect with each face
         // In some circumstances, two tetrahedrons can intersect such that only the edges of one tetrahedron intersect with the
         // faces of the other, and not the other way around. So we need to check both.
@@ -458,10 +458,9 @@ public:
         }
         // The above will fail to detect an overlap in which 3 edges of one tetrahedron perfectly intersect with 3 edges of the other.
         // But we can detect that case by checking the edgeEdgeIntersectionCount[] values.
-        /*return edgeEdgeIntersectionCount[0] == 4 &&
+        return edgeEdgeIntersectionCount[0] == 4 &&
                edgeEdgeIntersectionCount[1] == 4 &&
-               edgeEdgeIntersectionCount[2] == 4 ? OVERLAP_EDGES_TO_EDGES : 0;*/
-        return false;
+               edgeEdgeIntersectionCount[2] == 4 ? OVERLAP_EDGES_TO_EDGES : 0;
     }
 #else
 public:
@@ -482,8 +481,9 @@ public:
             if (dot(displacement4, displacement4) >= maximalTouchingSqrDistance)
                 return false;
         }
+
         const int multiplier = 4;
-        Coord sdot = maximalTouchingSqrDistance / (3 * 2);
+        const Coord sdot = maximalTouchingSqrDistance / 3;
         int8_t edgeEdgeIntersectionCount[4] = {}; // number of edges found to intersect with each face
         // In some circumstances, two tetrahedrons can intersect such that only the edges of one tetrahedron intersect with the
         // faces of the other, and not the other way around. So we need to check both.
@@ -534,10 +534,9 @@ public:
         }
         // The above will fail to detect an overlap in which 3 edges of one tetrahedron perfectly intersect with 3 edges of the other.
         // But we can detect that case by checking the edgeEdgeIntersectionCount[] values.
-        /*return edgeEdgeIntersectionCount[0] == 4 &&
+        return edgeEdgeIntersectionCount[0] == 4 &&
                edgeEdgeIntersectionCount[1] == 4 &&
-               edgeEdgeIntersectionCount[2] == 4 ? OVERLAP_EDGES_TO_EDGES : 0;*/
-        return false;
+               edgeEdgeIntersectionCount[2] == 4 ? OVERLAP_EDGES_TO_EDGES : 0;
     }
 #endif
 };
