@@ -455,6 +455,13 @@ public:
                 }
             }
             std::swap(a, b);
+
+            for (int d=0; d<3; d++)
+            {
+                mpz_add(aCenter4[d], a->t.t[0][d], a->t.t[1][d]);
+                for (int p=2; p<4; p++)
+                    mpz_add(aCenter4[d], aCenter4[d], a->t.t[p][d]);
+            }
         }
         // The above will fail to detect an overlap in which 3 edges of one tetrahedron perfectly intersect with 3 edges of the other.
         // But we can detect that case by checking the edgeEdgeIntersectionCount[] values.
@@ -531,6 +538,10 @@ public:
                 }
             }
             std::swap(a, b);
+
+            aCenter4 = a->t[0];
+            for (int p=1; p<4; p++)
+                aCenter4 += a->t[p];
         }
         // The above will fail to detect an overlap in which 3 edges of one tetrahedron perfectly intersect with 3 edges of the other.
         // But we can detect that case by checking the edgeEdgeIntersectionCount[] values.
