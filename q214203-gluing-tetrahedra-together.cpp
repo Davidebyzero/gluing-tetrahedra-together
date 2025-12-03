@@ -1193,7 +1193,7 @@ void enumerate(
                             void *entry = (uint8_t*)polytetTable + (size_t)indexEntry * newPolytetsCompressedSize;
                             if (memcmp(entry, &runningLeastPolytet[0].value, newPolytetsCompressedSize) == 0)
                                 goto skipDuplicate;
-                            index = &nextHashCollisionTable[indexEntry];
+                            index = &nextHashCollisionTable[polytetTableMaxSize-1 - indexEntry];
                         }
                     }
 #ifndef DISABLE_OVERLAP_CHECKING
@@ -1222,7 +1222,7 @@ void enumerate(
                                 void *entry = (uint8_t*)polytetTable + (size_t)indexEntry * newPolytetsCompressedSize;
                                 if (memcmp(entry, &runningLeastPolytet[0].value, newPolytetsCompressedSize) == 0)
                                     goto skipDuplicate;
-                                index = &nextHashCollisionTable[indexEntry];
+                                index = &nextHashCollisionTable[polytetTableMaxSize-1 - indexEntry];
                                 indexEntry = *index;
                                 if (indexEntry == 0)
                                     break; // no duplicate of runningLeastPolytet[0].value was found in hash table
@@ -1238,10 +1238,10 @@ void enumerate(
                         polytetChiralCount += isChiral;
                         memcpy(entry, &runningLeastPolytet[0].value, newPolytetsCompressedSize);
 #ifdef MULTITHREADING
-                        //nextHashCollisionTable[newPolytetCountFetched] = 0; // unnecessary thanks to the "memset(nextIndexTable, ...)"
+                        //nextHashCollisionTable[polytetTableMaxSize-1 - newPolytetCountFetched] = 0; // unnecessary thanks to the "memset(nextIndexTable, ...)"
                         *index =               newPolytetCountFetched + 1;
 #else
-                        //nextHashCollisionTable[newPolytetCount       ] = 0; // unnecessary thanks to the "memset(nextIndexTable, ...)"
+                        //nextHashCollisionTable[polytetTableMaxSize-1 - newPolytetCount       ] = 0; // unnecessary thanks to the "memset(nextIndexTable, ...)"
                         *index =             ++newPolytetCount;
 #endif
                     }
@@ -1742,14 +1742,14 @@ int main(int argc, char *argv[])
 #endif
 
         zeroesNeeded[0].start = basePolytetTable;
-        zeroesNeeded[0].end   = nextHashCollisionTable + newPolytetCount;
+        zeroesNeeded[0].end   = nextHashCollisionTable;
 
         polytetCount = newPolytetCount;
         auto polytetByteCount = polytetCount * newPolytetsCompressedSize;
         memmove(basePolytetTable, polytetTable, polytetByteCount);
 
-        zeroesNeeded[1].start =           polytetTable;
-        zeroesNeeded[1].end   = (uint8_t*)polytetTable + polytetByteCount;
+        zeroesNeeded[1].start = (HashIndex*)polytetTable - polytetCount;//          polytetTable;
+        zeroesNeeded[1].end   =   (uint8_t*)polytetTable + polytetByteCount;
 
 #ifdef WRITE_TO_FILES
         writeFile(getCompressedPolytetFilename(tetCount), basePolytetTable, polytetByteCount);
