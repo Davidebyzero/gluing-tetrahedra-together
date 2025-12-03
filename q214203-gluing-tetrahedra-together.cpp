@@ -663,11 +663,17 @@ public:
         }
     }
 };
+uint64_t splitmix64(uint64_t z)
+{
+    z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9;
+    z = (z ^ (z >> 27)) * 0x94D049BB133111EB;
+    return z ^ (z >> 31);
+}
 size_t hash(const CompressedPolytetBits &value)
 {
-    std::size_t seed  = std::hash<uint64_t>{}(((uint64_t*)&value)[0]);
+    std::size_t seed  = splitmix64(((uint64_t*)&value)[0]);
 #if MAXIMUM_TETCOUNT > 23
-    {         } seed ^= std::hash<uint64_t>{}(((uint64_t*)&value)[1]) + (seed << 6) + (seed >> 2);
+    {         } seed ^= splitmix64(((uint64_t*)&value)[1]) + (seed << 6) + (seed >> 2);
 #endif
     return seed;
 }
