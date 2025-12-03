@@ -1354,7 +1354,7 @@ int main(int argc, char *argv[])
 #   endif
 #endif
 #ifdef RESUME_FROM_FILE
-    bool overlapCacheResumed = false;
+    bool overlapCacheResumed;
     {
         FILE *resumeFile = NULL;
         const char *filename;
@@ -1393,12 +1393,12 @@ int main(int argc, char *argv[])
                 std::cerr << "Error reading file \"" << filename << "\"" << std::endl;
                 goto errorQuit;
             }
-#ifndef DISABLE_OVERLAP_CHECKING
-            overlapCacheResumed = readFile(filename = OVERLAP_BITMAP_FILENAME, (uint8_t*)overlapCache, overlapCacheSize);
-#endif
             resumedFromFile = true;
         }
     }
+#ifndef DISABLE_OVERLAP_CHECKING
+    overlapCacheResumed = overlapCacheResumed = readFile(OVERLAP_BITMAP_FILENAME, (uint8_t*)overlapCache, overlapCacheSize);
+#endif
     if (!pool)
 #endif
     {
