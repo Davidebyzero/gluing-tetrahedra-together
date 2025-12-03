@@ -1231,9 +1231,9 @@ void enumerate(
                         if (newPolytetCount >= polytetTableMaxSize)
                             quitMemory();
                         size_t newPolytetCountFetched = __atomic_fetch_add(&newPolytetCount, 1, __ATOMIC_RELAXED);
-                        void *entry = (uint8_t*)polytetTable + (size_t)(indexEntry = newPolytetCountFetched) * newPolytetsCompressedSize;
+                        void *entry = (uint8_t*)polytetTable + newPolytetCountFetched * newPolytetsCompressedSize;
 #else
-                        void *entry = (uint8_t*)polytetTable + (size_t)(indexEntry = newPolytetCount       ) * newPolytetsCompressedSize;
+                        void *entry = (uint8_t*)polytetTable + newPolytetCount        * newPolytetsCompressedSize;
 #endif
                         polytetChiralCount += isChiral;
                         memcpy(entry, &runningLeastPolytet[0].value, newPolytetsCompressedSize);
