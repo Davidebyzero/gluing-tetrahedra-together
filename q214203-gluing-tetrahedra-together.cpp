@@ -381,8 +381,8 @@ private:
     #define OVERLAP_SCALAR_VARIABLES intersectNumerator, intersectDenominator, uNumerator, vNumerator, uvDenominator, uvNumeratorSum
     #define OVERLAP_VECTOR_VARIABLES(d) displacement[d], center[d], normal[d], tmp[d], p0p1[d], intersectionPoint[d], delta[d], edge1[d], edge2[d]
 #   else
-    #define OVERLAP_SCALAR_VARIABLES intersectNumerator, intersectDenominator, uNumerator, vNumerator, uvDenominator, uvNumeratorSum, pdot, qdot, absDiff, sdot
-    #define OVERLAP_VECTOR_VARIABLES(d) displacement[d], normal[d], tmp[d], p0p1[d], intersectionPoint[d], delta[d], edge1[d], edge2[d], p[d], q[d], intersect[d]
+    #define OVERLAP_SCALAR_VARIABLES pdot, qdot, absDiff, sdot, uNumerator, vNumerator, uvDenominator, uvNumeratorSum
+    #define OVERLAP_VECTOR_VARIABLES(d) displacement[d], tmp[d], p[d], q[d], intersect[d]
 #   endif
     mpz_t OVERLAP_SCALAR_VARIABLES;
     mpz_t OVERLAP_VECTOR_VARIABLES(3);
