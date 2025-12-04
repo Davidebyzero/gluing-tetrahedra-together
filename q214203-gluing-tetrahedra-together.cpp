@@ -909,17 +909,15 @@ void printPolytet(CompressedPolytetBits value, Polytet &polytet,
     for (int d=0; d<3; d++)
         mpz_set_ui(printCenter[d], 0);
     for (int i=0; i<polytet.size(); i++)
-        for (int p=0; p<4; p++)
-            for (int d=0; d<3; d++)
-                mpz_add(printCenter[d], printCenter[d], polytet[i].t.t[p][d]);
+        for (int d=0; d<3; d++)
+            mpz_add(printCenter[d], printCenter[d], polytet[i].t.t[Tetrahedron_Center][d]);
     for (int d=0; d<3; d++)
-        mpz_div_ui(printCenter[d], printCenter[d], polytet.size() * 4);
+        mpz_div_ui(printCenter[d], printCenter[d], polytet.size());
 #else
     Coord3 printCenter = {{0, 0, 0}};
     for (int i=0; i<polytet.size(); i++)
-        for (int p=0; p<4; p++)
-            printCenter += polytet[i].t[p];
-    printCenter /= polytet.size() * 4;
+        printCenter += polytet[i].t[Tetrahedron_Center];
+    printCenter /= polytet.size();
 #endif
     for (int i=0; i<polytet.size(); i++)
     {
