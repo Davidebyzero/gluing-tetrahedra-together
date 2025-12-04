@@ -619,7 +619,7 @@ public:
                 // collisions with nearer pieces are already cached, we can safely skip face[3]
                 for (int faceNum=0; faceNum<3; faceNum++)
                 {
-                    Tetrahedron normalizedTetrahedron; // first 3 points are the face, and the 4th point is for calculating the normal
+                    Coord3 normalizedTetrahedron[4]; // first 3 points are the face, and the 4th point is for calculating the normal
                     for (int i=0; i<4; i++)
                         normalizedTetrahedron[i] = b->t[tetrahedronFaces[faceNum][i]];
                     Coord3 center = {{0, 0, 0}}; // multiplied by 3 compared to original coordinates
