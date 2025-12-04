@@ -66,20 +66,22 @@ typedef  int64_t          CompressedPolytetBitsSigned;
 
 typedef uint64_t CompressedSubpolytet; // compressed in branchless format, in bijective trinary; for caching known-overlapping subpolytet paths
 
+const int Tetrahedron_Center = 4;
+
 #ifdef USE_GMP
 class Tetrahedron
 {
     void init()
     {
-        for (int p=0; p<5; p++)
+        for (int p=0; p<=Tetrahedron_Center; p++)
             for (int d=0; d<3; d++)
                 mpz_init(t[p][d]);
     }
 public:
-    mpz_t t[5][3];
+    mpz_t t[Tetrahedron_Center + 1][3]; // 5th point is the center (mean of all 4 vertices)
     Tetrahedron &operator=(const Tetrahedron &_t)
     {
-        for (int p=0; p<5; p++)
+        for (int p=0; p<=Tetrahedron_Center; p++)
             for (int d=0; d<3; d++)
                 mpz_set(t[p][d], _t.t[p][d]);
         return *this;
@@ -95,7 +97,7 @@ public:
     }
     ~Tetrahedron()
     {
-        for (int p=0; p<5; p++)
+        for (int p=0; p<=Tetrahedron_Center; p++)
             for (int d=0; d<3; d++)
                 mpz_clear(t[p][d]);
     }
@@ -103,7 +105,7 @@ public:
 #else
 typedef __int128 Coord;
 typedef std::array<Coord, 3> Coord3;
-typedef std::array<Coord3, 5> Tetrahedron; // 5th point is the center (mean of all 4 vertices)
+typedef std::array<Coord3, Tetrahedron_Center + 1> Tetrahedron; // 5th point is the center (mean of all 4 vertices)
 #endif
 
 // vertex indices of faces with identical chirality
@@ -203,14 +205,14 @@ public:
             for (int d=0; d<3; d++)
             {
                 // Copy the calculated face center into the tetrahedron center
-                mpz_set(t.t.t[4][d], newVertex[d]);
+                mpz_set(t.t.t[Tetrahedron_Center][d], newVertex[d]);
                 // Finalize the new vertex
                 mpz_div_ui(newVertex[d], newVertex[d], 3);
                 mpz_mul_ui(newVertex[d], newVertex[d], 2);
                 mpz_sub   (newVertex[d], newVertex[d], tetToAttachTo.t.t[3 - faceNum][d]);
                 // Finish calculating the center
-                mpz_add   (t.t.t[4][d], t.t.t[4][d], newVertex[d]);
-                mpz_div_ui(t.t.t[4][d], t.t.t[4][d], 4);
+                mpz_add   (t.t.t[Tetrahedron_Center][d], t.t.t[Tetrahedron_Center][d], newVertex[d]);
+                mpz_div_ui(t.t.t[Tetrahedron_Center][d], t.t.t[Tetrahedron_Center][d], 4);
             }
 #else
             Coord3 &newVertex = t.t[0];
@@ -226,11 +228,11 @@ public:
             for (int d=0; d<3; d++)
             {
                 // Copy the calculated face center into the tetrahedron center
-                t.t[4][d] = newVertex[d];
+                t.t[Tetrahedron_Center][d] = newVertex[d];
                 // Finalize the new vertex
                 newVertex[d] = newVertex[d]/3 * 2 - tetToAttachTo.t[3 - faceNum][d];
                 // Finish calculating the center
-                t.t[4][d] = (t.t[4][d] + newVertex[d]) / 4;
+                t.t[Tetrahedron_Center][d] = (t.t[Tetrahedron_Center][d] + newVertex[d]) / 4;
             }
 #endif
             // Copy the other vertices
@@ -408,7 +410,7 @@ public:
         // Skip the longer overlap checking algorithm if the two tetrahedrons' centers are sufficiently separated.
         // Subtract center of tetrahedron "b" from center of tetrahedron "a".
         for (int d=0; d<3; d++)
-            mpz_sub(displacement[d], a->t.t[4][d], b->t.t[4][d]);
+            mpz_sub(displacement[d], a->t.t[Tetrahedron_Center][d], b->t.t[Tetrahedron_Center][d]);
         // Compare the sum of the squares of the orthogonal distances against the threshold squared distance.
         dot(tmp[0], displacement, displacement);
         if (mpz_cmp(tmp[0], maximalTouchingSqrDistance) >= 0)
@@ -517,7 +519,7 @@ public:
 #   else
             for (int i=0; i<3; i++)
                 for (int d=0; d<3; d++)
-                    mpz_sub(triangle[i][d], b->t.t[i + 1][d], b->t.t[4][d]);
+                    mpz_sub(triangle[i][d], b->t.t[i + 1][d], b->t.t[Tetrahedron_Center][d]);
             for (int faceNum=0; faceNum<3; faceNum++)
             {
                 int oldV[3] =
@@ -591,7 +593,7 @@ public:
         // Skip the longer overlap checking algorithm if the two tetrahedrons' centers are sufficiently separated.
         {
             // Subtract center of tetrahedron "b" from center of tetrahedron "a".
-            Coord3 displacement = a->t[4] - b->t[4];
+            Coord3 displacement = a->t[Tetrahedron_Center] - b->t[Tetrahedron_Center];
             // Compare the sum of the squares of the orthogonal distances against the threshold squared distance.
             if (dot(displacement, displacement) >= maximalTouchingSqrDistance)
                 return false;
@@ -681,9 +683,9 @@ public:
 #   else
             Coord3 triangle[3] =
             {
-                b->t[1] - b->t[4],
-                b->t[2] - b->t[4],
-                b->t[3] - b->t[4]
+                b->t[1] - b->t[Tetrahedron_Center],
+                b->t[2] - b->t[Tetrahedron_Center],
+                b->t[3] - b->t[Tetrahedron_Center]
             };
             for (int faceNum=0; faceNum<3; faceNum++)
             {
