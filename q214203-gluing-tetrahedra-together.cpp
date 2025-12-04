@@ -405,7 +405,11 @@ private:
 public:
      TetrahedronOverlap() {mpz_initOrClear<mpz_init , mpz_inits >();}
     ~TetrahedronOverlap() {mpz_initOrClear<mpz_clear, mpz_clears>();}
-    int8_t operator()(const mpz_t maximalTouchingSqrDistance)
+    int8_t operator()(const mpz_t maximalTouchingSqrDistance
+#   ifdef ALTERNATIVE_OVERLAP_CHECKER
+        , const mpz_t sdot
+#   endif
+        )
     {
         // Skip the longer overlap checking algorithm if the two tetrahedrons' centers are sufficiently separated.
         // Subtract center of tetrahedron "b" from center of tetrahedron "a".
@@ -416,9 +420,6 @@ public:
         if (mpz_cmp(tmp[0], maximalTouchingSqrDistance) >= 0)
             return false;
 
-#   ifdef ALTERNATIVE_OVERLAP_CHECKER
-        mpz_div_ui(sdot, maximalTouchingSqrDistance, 3);
-#   endif
         int8_t edgeEdgeIntersectionCount[4] = {}; // number of edges found to intersect with each face
         // In some circumstances, two tetrahedrons can intersect such that only the edges of one tetrahedron intersect with the
         // faces of the other, and not the other way around. So we need to check both.
@@ -588,7 +589,11 @@ public:
     }
 #else
 public:
-    int8_t operator()(const Coord &maximalTouchingSqrDistance)
+    int8_t operator()(const Coord &maximalTouchingSqrDistance
+#   ifdef ALTERNATIVE_OVERLAP_CHECKER
+        , const Coord &sdot
+#   endif
+        )
     {
         // Skip the longer overlap checking algorithm if the two tetrahedrons' centers are sufficiently separated.
         {
@@ -599,9 +604,6 @@ public:
                 return false;
         }
 
-#   ifdef ALTERNATIVE_OVERLAP_CHECKER
-        const Coord sdot = maximalTouchingSqrDistance / 3;
-#   endif
         int8_t edgeEdgeIntersectionCount[4] = {}; // number of edges found to intersect with each face
         // In some circumstances, two tetrahedrons can intersect such that only the edges of one tetrahedron intersect with the
         // faces of the other, and not the other way around. So we need to check both.
@@ -998,9 +1000,17 @@ bool readFile(const char *filename, uint8_t *ptr, size_t size)
 #endif
 
 #ifdef USE_GMP
-void mul_start_3(Tetrahedron &start, mpz_t maximalTouchingSqrDistance)
+void mul_start_3(Tetrahedron &start, mpz_t maximalTouchingSqrDistance
+#   ifdef ALTERNATIVE_OVERLAP_CHECKER
+    , mpz_t sdot
+#   endif
+    )
 #else
-void mul_start_3(Tetrahedron &start, Coord &maximalTouchingSqrDistance)
+void mul_start_3(Tetrahedron &start, Coord &maximalTouchingSqrDistance
+#   ifdef ALTERNATIVE_OVERLAP_CHECKER
+    , Coord &sdot
+#   endif
+    )
 #endif
 {
     for (int p=0; p<4; p++)
@@ -1012,8 +1022,14 @@ void mul_start_3(Tetrahedron &start, Coord &maximalTouchingSqrDistance)
 #endif
 #ifdef USE_GMP
     mpz_mul_ui(maximalTouchingSqrDistance, maximalTouchingSqrDistance, 3*3);
+#   ifdef ALTERNATIVE_OVERLAP_CHECKER
+    mpz_mul_ui(sdot                      , sdot                      , 3*3);
+#   endif
 #else
     maximalTouchingSqrDistance *= 3*3;
+#   ifdef ALTERNATIVE_OVERLAP_CHECKER
+    sdot                       *= 3*3;
+#   endif
 #endif
 }
 
@@ -1203,8 +1219,14 @@ void enumerate(
     const Tetrahedron &start,
 #ifdef USE_GMP
     const mpz_t maximalTouchingSqrDistance,
+#   ifdef ALTERNATIVE_OVERLAP_CHECKER
+    const mpz_t sdot,
+#   endif
 #else
     const Coord maximalTouchingSqrDistance,
+#   ifdef ALTERNATIVE_OVERLAP_CHECKER
+    const Coord sdot,
+#   endif
 #endif
 
 #ifndef DISABLE_OVERLAP_CHECKING
@@ -1422,6 +1444,9 @@ int main(int argc, char *argv[])
         36*36  // squared coordinate of "start" tetrahedron
         * 3    // number of dimensions
         * 2*2; // twice the radius, so we square that too
+#   ifdef ALTERNATIVE_OVERLAP_CHECKER
+    const unsigned SDOT = MAXIMAL_TOUCHING_SQR_DISTANCE / 3;
+#   endif
     initLookupTables();
 #ifdef USE_GMP
     Tetrahedron start;
@@ -1436,6 +1461,11 @@ int main(int argc, char *argv[])
     mpz_t      maximalTouchingSqrDistance;
     mpz_init  (maximalTouchingSqrDistance);
     mpz_set_ui(maximalTouchingSqrDistance, MAXIMAL_TOUCHING_SQR_DISTANCE);
+#   ifdef ALTERNATIVE_OVERLAP_CHECKER
+    mpz_t      sdot;
+    mpz_init  (sdot);
+    mpz_set_ui(sdot, SDOT);
+#   endif
     for (int d=0; d<3; d++)
         mpz_inits(printCenter[d], printTmp[d], NULL);
 #else
@@ -1448,6 +1478,9 @@ int main(int argc, char *argv[])
         {{  0,  0,  0}}
     }};
     static Coord maximalTouchingSqrDistance = MAXIMAL_TOUCHING_SQR_DISTANCE;
+#   ifdef ALTERNATIVE_OVERLAP_CHECKER
+    static Coord sdot                       = SDOT;
+#   endif
 #endif
 
     decltype(startTime) currentTime;
@@ -1502,7 +1535,11 @@ int main(int argc, char *argv[])
                 resumeFile = f;
                 tetCount = i;
 #if defined(PRINT_POLYTETS) || defined(PRINT_POLYTETS_WITH_SYMMETRY)
-                mul_start_3(start, maximalTouchingSqrDistance);
+                mul_start_3(start, maximalTouchingSqrDistance
+#   ifdef ALTERNATIVE_OVERLAP_CHECKER
+                    , sdot
+#   endif
+                    );
 #endif
             }
             else
@@ -1551,15 +1588,30 @@ int main(int argc, char *argv[])
         mpz_t maximalTouchingSqrDistance2;
         mpz_init(maximalTouchingSqrDistance2);
         mpz_set (maximalTouchingSqrDistance2, maximalTouchingSqrDistance);
+    #   ifdef ALTERNATIVE_OVERLAP_CHECKER
+        mpz_t sdot2;
+        mpz_init(sdot2);
+        mpz_set (sdot2, sdot);
+    #   endif
     #else
         auto maximalTouchingSqrDistance2 = maximalTouchingSqrDistance;
+    #   ifdef ALTERNATIVE_OVERLAP_CHECKER
+        auto sdot2 = sdot;
+    #   endif
     #endif
 #else
         auto &start2 = start;
         auto &maximalTouchingSqrDistance2 = maximalTouchingSqrDistance;
+#   ifdef ALTERNATIVE_OVERLAP_CHECKER
+        auto &sdot2 = sdot;
+#   endif
 #endif
         for (int i=5; i<MAXIMUM_TETCOUNT; i+=2)
-            mul_start_3(start2, maximalTouchingSqrDistance2);
+            mul_start_3(start2, maximalTouchingSqrDistance2
+#ifdef ALTERNATIVE_OVERLAP_CHECKER
+                , sdot2
+#endif
+                );
         Polytet polytet;
         polytet.init<true>(start2);
         int tetCount = 2, topCount = 1, bottomCount = 1;
@@ -1586,7 +1638,11 @@ int main(int argc, char *argv[])
                         auto reflectedCompressedPath = reflectCompressedPath(compressedPath);
                         overlap.setA( newEndTet);
                         overlap.setB(prevEndTet);
-                        foundOverlap = overlap(maximalTouchingSqrDistance2);
+                        foundOverlap = overlap(maximalTouchingSqrDistance2
+#ifdef ALTERNATIVE_OVERLAP_CHECKER
+                            , sdot2
+#endif
+                            );
                         if (foundOverlap)
                         {
 #ifdef PRINT_POLYTETS_EDGE_CASES
@@ -1817,9 +1873,12 @@ int main(int argc, char *argv[])
             workers[threadID] = std::thread(enumerate,
                 threadID, std::ref(nextWorkAssignment), workAssignmentLength,
                 std::ref(start), maximalTouchingSqrDistance,
-#ifndef DISABLE_OVERLAP_CHECKING
+#   ifdef ALTERNATIVE_OVERLAP_CHECKER
+                sdot,
+#   endif
+#   ifndef DISABLE_OVERLAP_CHECKING
                 overlapCache,
-#endif
+#   endif
                 tetCount, pool, poolSize, (const uint8_t *)basePolytetTable, basePolytetCompressedSize, polytetCount,
                 hashTable, hashTableSize, nextHashCollisionTable, polytetTable, newPolytetsCompressedSize, polytetTableMaxSize,
                 std::ref(newPolytetCount), std::ref(polytetChiralCount[threadID])
@@ -1834,9 +1893,12 @@ int main(int argc, char *argv[])
         polytetChiralCount = 0;
         enumerate(
             start, maximalTouchingSqrDistance,
-#ifndef DISABLE_OVERLAP_CHECKING
+#   ifdef ALTERNATIVE_OVERLAP_CHECKER
+            sdot,
+#   endif
+#   ifndef DISABLE_OVERLAP_CHECKING
             overlapCache,
-#endif
+#   endif
             tetCount, pool, poolSize, (const uint8_t *)basePolytetTable, basePolytetCompressedSize, polytetCount,
             hashTable, hashTableSize, nextHashCollisionTable, polytetTable, newPolytetsCompressedSize, polytetTableMaxSize,
             newPolytetCount, polytetChiralCount
@@ -1887,7 +1949,11 @@ int main(int argc, char *argv[])
 
         resumedFromFile = false;
 #if defined(PRINT_POLYTETS) || defined(PRINT_POLYTETS_WITH_SYMMETRY)
-        mul_start_3(start, maximalTouchingSqrDistance);
+        mul_start_3(start, maximalTouchingSqrDistance
+#   ifdef ALTERNATIVE_OVERLAP_CHECKER
+            , sdot
+#   endif
+            );
 #endif
     }
 
