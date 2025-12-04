@@ -18,8 +18,14 @@
 
 #ifdef MULTITHREADING
     #include <thread>
-    #include <boost/thread/mutex.hpp>
     typedef unsigned THREAD_ID;
+    #ifdef SYNC_SPINLOCK
+        #include "sync_spinlock.h"
+    #else
+        #include <boost/thread/mutex.hpp>
+        #define MUTEX boost::mutex
+        #define SCOPED_LOCK boost::mutex::scoped_lock
+    #endif
 #endif // MULTITHREADING
 
 #ifndef _countof
@@ -888,9 +894,9 @@ void mul_start_3(Tetrahedron &start, Coord &maximalTouchingSqrDistance)
 }
 
 #ifdef MULTITHREADING
-    static boost::mutex hashTableMutex[HASH_TABLE_SHARDS]; // shard the hash table locking
-    static boost::mutex workAssignmentMutex;
-    static boost::mutex printPolytetMutex;
+    static MUTEX hashTableMutex[HASH_TABLE_SHARDS]; // shard the hash table locking
+    static MUTEX workAssignmentMutex;
+    static MUTEX printPolytetMutex;
     static bool hashTableInUse = false;
 
     struct WorkerJob
@@ -1124,7 +1130,7 @@ void enumerate(
         size_t basePolytet0;
         size_t basePolytet1;
         {
-            boost::mutex::scoped_lock lock(workAssignmentMutex);
+            SCOPED_LOCK lock(workAssignmentMutex);
             if (nextWorkAssignment >= polytetCount)
                 break;
             nextWorkAssignment = basePolytet1 = std::min((basePolytet0 = nextWorkAssignment) + workAssignmentLength, polytetCount);
@@ -1182,7 +1188,7 @@ void enumerate(
 #endif
                     {
 #ifdef MULTITHREADING
-                        boost::mutex::scoped_lock lock(hashTableMutex[shard]);
+                        SCOPED_LOCK lock(hashTableMutex[shard]);
 #endif
                         for (;;)
                         {
@@ -1212,7 +1218,7 @@ void enumerate(
                     // No overlap found, so add runningLeastPolytet[0].value to hash table and chiral count
                     {
 #ifdef MULTITHREADING
-                        boost::mutex::scoped_lock lock(hashTableMutex[shard]);
+                        SCOPED_LOCK lock(hashTableMutex[shard]);
                         size_t indexEntry = *index;
                         if (indexEntry != 0)
                         {
@@ -1253,14 +1259,14 @@ void enumerate(
                     if (!isChiral || symmetry > 1)
     #endif
                     {
-                        boost::mutex::scoped_lock lock(printPolytetMutex);
+                        SCOPED_LOCK lock(printPolytetMutex);
 
                         printf("<%d%s>\n", symmetry, symmetryTypeString[symmetryType]);
                         printPolytet(runningLeastPolytet[0].value, polytet);
                     }
 #elif defined(PRINT_POLYTETS)
                     {
-                        boost::mutex::scoped_lock lock(printPolytetMutex);
+                        SCOPED_LOCK lock(printPolytetMutex);
                         printPolytet(runningLeastPolytet[0].value, polytet);
                     }
 #endif

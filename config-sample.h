@@ -26,3 +26,4 @@
 #define WORKER_THREADS 16
 #define MAXIMUM_WORK_ASSIGNMENT 512
 #define HASH_TABLE_SHARDS 512
+//#define SYNC_SPINLOCK  // may be faster in the case of locks that typically last for a very short time, but uses much higher CPU when locks last longer
