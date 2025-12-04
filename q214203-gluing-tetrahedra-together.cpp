@@ -375,8 +375,15 @@ public:
     void setB(const Tet &x) {b = &x;}
 #ifdef USE_GMP
 private:
-    mpz_t intersectNumerator, intersectDenominator, uNumerator, vNumerator, uvDenominator, uvNumeratorSum;
-    mpz_t displacement[3], center[3], normal[3], tmp[3], p0p1[3], intersectionPoint[3], delta[3], edge1[3], edge2[3];
+#   ifndef ALTERNATIVE_OVERLAP_CHECKER
+    #define OVERLAP_SCALAR_VARIABLES intersectNumerator, intersectDenominator, uNumerator, vNumerator, uvDenominator, uvNumeratorSum
+    #define OVERLAP_VECTOR_VARIABLES(d) displacement[d], center[d], normal[d], tmp[d], p0p1[d], intersectionPoint[d], delta[d], edge1[d], edge2[d]
+#   else
+    #define OVERLAP_SCALAR_VARIABLES intersectNumerator, intersectDenominator, uNumerator, vNumerator, uvDenominator, uvNumeratorSum, pdot, qdot, absDiff, sdot
+    #define OVERLAP_VECTOR_VARIABLES(d) displacement[d], normal[d], tmp[d], p0p1[d], intersectionPoint[d], delta[d], edge1[d], edge2[d], p[d], q[d], intersect[d]
+#   endif
+    mpz_t OVERLAP_SCALAR_VARIABLES;
+    mpz_t OVERLAP_VECTOR_VARIABLES(3);
     mpz_t triangle[3][3];
     void dot(mpz_t &result, const mpz_t _a[3], const mpz_t _b[3])
     {
@@ -386,9 +393,9 @@ private:
     }
     template <void (*MPZ_CALL)(mpz_t x), void (*MPZ_CALLS)(mpz_t x, ...)> void mpz_initOrClear()
     {
-        MPZ_CALLS(intersectNumerator, intersectDenominator, uNumerator, vNumerator, uvDenominator, uvNumeratorSum, NULL);
+        MPZ_CALLS(OVERLAP_SCALAR_VARIABLES, NULL);
         for (int d=0; d<3; d++)
-            MPZ_CALLS(displacement[d], center[d], normal[d], tmp[d], p0p1[d], intersectionPoint[d], delta[d], edge1[d], edge2[d], NULL);
+            MPZ_CALLS(OVERLAP_VECTOR_VARIABLES(d), NULL);
         for (int p=0; p<3; p++)
             for (int d=0; d<3; d++)
                 MPZ_CALL(triangle[p][d]);
@@ -407,6 +414,9 @@ public:
         if (mpz_cmp(tmp[0], maximalTouchingSqrDistance) >= 0)
             return false;
 
+#   ifdef ALTERNATIVE_OVERLAP_CHECKER
+        mpz_div_ui(sdot, maximalTouchingSqrDistance, 3);
+#   endif
         int8_t edgeEdgeIntersectionCount[4] = {}; // number of edges found to intersect with each face
         // In some circumstances, two tetrahedrons can intersect such that only the edges of one tetrahedron intersect with the
         // faces of the other, and not the other way around. So we need to check both.
@@ -415,6 +425,9 @@ public:
             // Take advantage of the fact that the two tetrahedrons are regular and congruent, and
             // just check if any edge of tetrahedron "a" intersects with any face of tetrahedron "b".
             // Don't count it if only the endpoint of an edge intersects.
+            // Since it's guaranteed that due to the overlapCache, both tetrahedrons are single-attached end pieces, and all
+            // collisions with nearer pieces are already cached, we can safely skip face[3]
+#   ifndef ALTERNATIVE_OVERLAP_CHECKER
             for (int edgeNum=0; edgeNum < tetrahedronEdges_face3; edgeNum++)
             {
                 const mpz_t *p0 = a->t.t[tetrahedronEdges[edgeNum][0]];
@@ -501,6 +514,68 @@ public:
                         return true;
                 }
             }
+#   else
+            for (int i=0; i<3; i++)
+                for (int d=0; d<3; d++)
+                    mpz_sub(triangle[i][d], b->t.t[i + 1][d], b->t.t[4][d]);
+            for (int faceNum=0; faceNum<3; faceNum++)
+            {
+                int oldV[3] =
+                {
+                     faceNum,
+                    (faceNum + 1) % 3,
+                    (faceNum + 2) % 3
+                };
+                for (int edgeNum=0; edgeNum<3; edgeNum++)
+                {
+                    for (int d=0; d<3; d++)
+                    {
+                        mpz_sub(p[d], a->t.t[edgeNum + 1][d], b->t.t[0][d]);
+                        mpz_sub(q[d], a->t.t[0          ][d], b->t.t[0][d]);
+                    }
+
+                    dot(pdot, triangle[oldV[0]], p);
+                    dot(qdot, triangle[oldV[0]], q);
+
+                    // Check if the signs differ
+                    if ((mpz_sgn(pdot) ^ mpz_sgn(qdot)) < 0)
+                    {
+                        for (int d=0; d<3; d++)
+                        {
+                            mpz_mul(p[d], p[d], qdot);
+                            mpz_mul(q[d], q[d], pdot);
+                        }
+                        if (mpz_cmp(qdot, pdot) > 0)
+                        {
+                            for (int d=0; d<3; d++)
+                                mpz_sub(intersect[d], p[d], q[d]);
+                        }
+                        else
+                        {
+                            for (int d=0; d<3; d++)
+                                mpz_sub(intersect[d], q[d], p[d]);
+                        }
+
+                        dot(uNumerator, triangle[oldV[1]], intersect);
+                        dot(vNumerator, triangle[oldV[2]], intersect);
+                        if (mpz_cmp(pdot, qdot) > 0)
+                            mpz_sub(absDiff, pdot, qdot);
+                        else
+                            mpz_sub(absDiff, qdot, pdot);
+                        mpz_add(uvNumeratorSum, uNumerator, vNumerator);
+                        mpz_mul(uvDenominator, sdot, absDiff);
+
+                        int uCmp = mpz_cmp_ui(uNumerator, 0);
+                        int vCmp = mpz_cmp_ui(vNumerator, 0);
+                        int uvCmp = mpz_cmp(uvNumeratorSum, uvDenominator);
+                        if (uCmp > 0 && vCmp > 0 && uvCmp < 0)
+                            return true;
+                        if (uCmp == 0 || vCmp == 0 || uvCmp == 0)
+                            edgeEdgeIntersectionCount[faceNum]++;
+                    }
+                }
+            }
+#   endif
             std::swap(a, b);
         }
         // The above will fail to detect an overlap in which 3 edges of one tetrahedron perfectly intersect with 3 edges of the other.
@@ -522,14 +597,20 @@ public:
                 return false;
         }
 
+#   ifdef ALTERNATIVE_OVERLAP_CHECKER
+        const Coord sdot = maximalTouchingSqrDistance / 3;
+#   endif
         int8_t edgeEdgeIntersectionCount[4] = {}; // number of edges found to intersect with each face
         // In some circumstances, two tetrahedrons can intersect such that only the edges of one tetrahedron intersect with the
         // faces of the other, and not the other way around. So we need to check both.
         for (int swapped=0; swapped<2; swapped++)
         {
             // Take advantage of the fact that the two tetrahedrons are regular and congruent, and
-            // just check if any edge of tetrahedron "a" intersects with any face of tetrahedron "b".
+            // just check if any edge of tetrahedron "b" intersects with any face of tetrahedron "a".
             // Don't count it if only the endpoint of an edge intersects.
+            // Since it's guaranteed that due to the overlapCache, both tetrahedrons are single-attached end pieces, and all
+            // collisions with nearer pieces are already cached, we can safely skip face[3]
+#   ifndef ALTERNATIVE_OVERLAP_CHECKER
             for (int edgeNum=0; edgeNum < tetrahedronEdges_face3; edgeNum++)
             {
                 Coord3 p0 = a->t[tetrahedronEdges[edgeNum][0]];
@@ -597,6 +678,49 @@ public:
                         return true;
                 }
             }
+#   else
+            Coord3 triangle[3] =
+            {
+                b->t[1] - b->t[4],
+                b->t[2] - b->t[4],
+                b->t[3] - b->t[4]
+            };
+            for (int faceNum=0; faceNum<3; faceNum++)
+            {
+                Coord3 *oldV[3] =
+                {
+                    &triangle[ faceNum         ],
+                    &triangle[(faceNum + 1) % 3],
+                    &triangle[(faceNum + 2) % 3]
+                };
+                for (int edgeNum=0; edgeNum<3; edgeNum++)
+                {
+                    Coord3 p = a->t[edgeNum + 1] - b->t[0];
+                    Coord3 q = a->t[0          ] - b->t[0];
+
+                    Coord pdot = dot(*oldV[0], p);
+                    Coord qdot = dot(*oldV[0], q);
+
+                    // Check if the signs differ
+                    if ((pdot ^ qdot) < 0)
+                    {
+                        Coord3 intersect = qdot > pdot ?
+                            p * qdot - q * pdot :
+                            q * pdot - p * qdot;
+
+                        Coord uNumerator = dot(*oldV[1], intersect);
+                        Coord vNumerator = dot(*oldV[2], intersect);
+                        Coord absDiff = pdot > qdot ? pdot - qdot : qdot - pdot;
+                        Coord uvNumeratorSum = uNumerator + vNumerator, uvDenominator = sdot * absDiff;
+
+                        if (uNumerator > 0 && vNumerator > 0 && uvNumeratorSum < uvDenominator)
+                            return true;
+                        if (uNumerator == 0 || vNumerator == 0 || uvNumeratorSum == uvDenominator)
+                            edgeEdgeIntersectionCount[faceNum]++;
+                    }
+                }
+            }
+#   endif
             std::swap(a, b);
         }
         // The above will fail to detect an overlap in which 3 edges of one tetrahedron perfectly intersect with 3 edges of the other.

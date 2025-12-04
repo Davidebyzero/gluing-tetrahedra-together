@@ -21,6 +21,8 @@
 
 #define FILE_CHUNK_SIZE (1uLL << 30)  // needs to be less than 1<<31
 
+//#define ALTERNATIVE_OVERLAP_CHECKER  // use the overlap checker based on Level River St's clashcheck()
+
 // MULTITHREADING will enable threading and synchronization code. Note that with this enabled, MEMORY_POOL_INITIAL_SIZE needs to be fully preallocated (it won't grow on demand).
 //#define MULTITHREADING
 #define WORKER_THREADS 16
