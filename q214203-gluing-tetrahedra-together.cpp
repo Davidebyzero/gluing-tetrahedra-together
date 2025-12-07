@@ -1624,7 +1624,6 @@ int main(int argc, char *argv[])
         {
             if (faceNumStack[stackPos] < 0)
             {
-                int8_t foundOverlap = 0;
                 if (tetCount > MIN_OVERLAP_DEPTH)
                 {
                     Tet  &newEndTet = polytet[tetCount - 1];
@@ -1632,7 +1631,7 @@ int main(int argc, char *argv[])
                     // TODO: Autodetect MIN_OVERLAP_DEPTH
                     newEndTet.tagSkipOverlapCheck(polytet, MIN_OVERLAP_DEPTH);
                     CompressedSubpolytet compressedPath = (prevEndTet.compressedPath - 1) / 3;
-                    foundOverlap = overlapCache[compressedPath - 1];
+                    auto foundOverlap = overlapCache[compressedPath - 1];
                     if (foundOverlap == 0)
                     {
                         auto reflectedCompressedPath = reflectCompressedPath(compressedPath);
@@ -1683,9 +1682,9 @@ int main(int argc, char *argv[])
                             overlapCache[reflectedCompressedPath - 1] = -1;
                         }
                     }
+                    if (foundOverlap)
+                        goto backtrackOverlapChecking;
                 }
-                if (foundOverlap)
-                    goto backtrackOverlapChecking;
                 faceNumStack[stackPos]++;
             }
             if (tetCount == MAXIMUM_TETCOUNT || faceNumStack[stackPos] == 3)
