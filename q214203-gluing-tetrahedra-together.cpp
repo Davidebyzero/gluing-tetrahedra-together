@@ -1642,8 +1642,31 @@ int main(int argc, char *argv[])
                     Tet  &newEndTet = polytet[tetCount - 1];
                     Tet &prevEndTet = polytet[tetCount - 2];
                     // TODO: Autodetect MIN_OVERLAP_DEPTH
+#if 0
                     newEndTet.tagSkipOverlapCheck(polytet, MIN_OVERLAP_DEPTH);
                     CompressedSubpolytet compressedPath = (prevEndTet.compressedPath - 1) / 3;
+#else
+                    // Formula to calculate full path from its two halves; much faster than the above method
+                    CompressedSubpolytet compressedPath = 0, trit = 1;
+                    {
+                        CompressedSubpolytet trit = 1;
+                        int i;
+                        for (i = stackPos - 1; i>=2; i-=2)
+                        {
+                            compressedPath += (faceNumStack[i] + 1) * trit;
+                            trit *= 3;
+                        }
+                        int8_t middle = faceNumStack[i];
+                        i = stackPos & 1;
+                        compressedPath += ((middle + faceNumStack[i] + 1) % 3 + 1) * trit;
+                        trit *= 3;
+                        while ((i+=2) < stackPos)
+                        {
+                            compressedPath += (faceNumStack[i] + 1) * trit;
+                            trit *= 3;
+                        }
+                    }
+#endif
                     auto foundOverlap = overlapCache[compressedPath - 1];
                     if (foundOverlap == 0)
                     {
