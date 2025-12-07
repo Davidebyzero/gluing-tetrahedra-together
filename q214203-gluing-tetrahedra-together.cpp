@@ -843,6 +843,18 @@ void Tet::tagSkipOverlapCheck(Polytet &polytet, int depth)
     t->tagSkipOverlapCheckHelper(polytet, depth, &rotationTable[attachedFace]);
 }
 
+CompressedSubpolytet reverseCompressedPath(CompressedSubpolytet compressedPath)
+{
+    CompressedSubpolytet compressedPathReverse = 0;
+    while (compressedPath)
+    {
+        compressedPath--;
+        unsigned next = compressedPath % 3;
+        compressedPathReverse = compressedPathReverse * 3 + next + 1;
+        compressedPath /= 3;
+    }
+    return compressedPathReverse;
+}
 CompressedSubpolytet reflectCompressedPath(CompressedSubpolytet compressedPath)
 {
     CompressedSubpolytet compressedPathReflected = 0, trit = 1;
@@ -1582,6 +1594,7 @@ int main(int argc, char *argv[])
 #ifndef DISABLE_OVERLAP_CHECKING
     // Precompute overlapCache
     {
+        size_t pathCount = 0;
 #if defined(PRINT_POLYTETS) || defined(PRINT_POLYTETS_WITH_SYMMETRY)
         Tetrahedron start2(start);
     #ifdef USE_GMP
@@ -1637,16 +1650,20 @@ int main(int argc, char *argv[])
                         auto reflectedCompressedPath = reflectCompressedPath(compressedPath);
                         overlap.setA( newEndTet);
                         overlap.setB(prevEndTet);
+                        pathCount++;
                         foundOverlap = overlap(maximalTouchingSqrDistance2
 #ifdef ALTERNATIVE_OVERLAP_CHECKER
                             , sdot2
 #endif
                             );
+                        auto          reversedCompressedPath = reverseCompressedPath(         compressedPath);
+                        auto reversedReflectedCompressedPath = reverseCompressedPath(reflectedCompressedPath);
                         if (foundOverlap)
                         {
 #ifdef PRINT_POLYTETS_EDGE_CASES
                             if (foundOverlap < 0)
                             {
+                                foundOverlap = 1;
                                 SymmetryRoot runningLeastPolytet[2];
                                 bool isChiral;
     #if defined(PRINT_SYMMETRY_TOTALS) || defined(PRINT_POLYTETS_WITH_SYMMETRY)
@@ -1673,16 +1690,20 @@ int main(int argc, char *argv[])
                                 printPolytet(runningLeastPolytet[0].value, polytet);
                             }
 #endif
-                            overlapCache[         compressedPath - 1] = 1;
-                            overlapCache[reflectedCompressedPath - 1] = 1;
+                            overlapCache[                 compressedPath - 1] = 1;
+                            overlapCache[        reflectedCompressedPath - 1] = 1;
+                            overlapCache[         reversedCompressedPath - 1] = 1;
+                            overlapCache[reversedReflectedCompressedPath - 1] = 1;
                         }
                         else
                         {
-                            overlapCache[         compressedPath - 1] = -1;
-                            overlapCache[reflectedCompressedPath - 1] = -1;
+                            overlapCache[                 compressedPath - 1]  = -1;
+                            overlapCache[        reflectedCompressedPath - 1]  = -1;
+                            overlapCache[         reversedCompressedPath - 1] |= -2;
+                            overlapCache[reversedReflectedCompressedPath - 1] |= -2;
                         }
                     }
-                    if (foundOverlap)
+                    if (foundOverlap > 0 || foundOverlap == -1)
                         goto backtrackOverlapChecking;
                 }
                 faceNumStack[stackPos]++;
@@ -1712,18 +1733,18 @@ int main(int argc, char *argv[])
 #if defined(USE_GMP) && (defined(PRINT_POLYTETS) || defined(PRINT_POLYTETS_WITH_SYMMETRY))
         mpz_clear(maximalTouchingSqrDistance2);
 #endif
-    }
 #ifdef WRITE_TO_FILES
-    writeFile(OVERLAP_BITMAP_FILENAME, (uint8_t*)overlapCache, overlapCacheSize);
+        writeFile(OVERLAP_BITMAP_FILENAME, (uint8_t*)overlapCache, overlapCacheSize);
 #endif
-    currentTime = std::chrono::steady_clock::now();
-    std::cout << "Precomputed overlap cache ";
+        currentTime = std::chrono::steady_clock::now();
+        std::cout << "Precomputed overlap cache on " << pathCount << " paths ";
 #ifdef RESUME_FROM_FILE
-    if (overlapCacheResumed)
-        std::cout << "(resumed) ";
+        if (overlapCacheResumed)
+            std::cout << "(resumed) ";
 #endif
-    std::cout << "[" << std::chrono::duration_cast<std::chrono::milliseconds>(currentTime - startTime).count() << " ms]" << std::endl;
+        std::cout << "[" << std::chrono::duration_cast<std::chrono::milliseconds>(currentTime - startTime).count() << " ms]" << std::endl;
 #endif // !DISABLE_OVERLAP_CHECKING
+    }
 
 #ifdef MULTITHREADING
     memset(polytetChiralCount, 0, sizeof(polytetChiralCount));
