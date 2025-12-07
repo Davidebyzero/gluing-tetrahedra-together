@@ -1254,10 +1254,9 @@ void enumerate(
 
     HashIndex *const hashTable,
     const size_t hashTableSize,
-    HashIndex *const nextHashCollisionTable,
     void *const polytetTable,
     const int newPolytetsCompressedSize,
-    const size_t polytetTableMaxSize,
+    const int polytetTableElementSize,
 
     size_t &newPolytetCount,
     size_t &polytetChiralCount
@@ -1350,14 +1349,12 @@ void enumerate(
 #endif
                         for (;;)
                         {
-                            size_t indexEntry = *index;
-                            if (indexEntry == 0)
+                            if (*index == 0)
                                 break; // no duplicate of runningLeastPolytet[0].value was found in hash table
-                            indexEntry--;
-                            void *entry = (uint8_t*)polytetTable + (size_t)indexEntry * newPolytetsCompressedSize;
+                            void *entry = (uint8_t*)polytetTable + (size_t)(*index - 1) * polytetTableElementSize;
                             if (memcmp(entry, &runningLeastPolytet[0].value, newPolytetsCompressedSize) == 0)
                                 goto skipDuplicate;
-                            index = &nextHashCollisionTable[polytetTableMaxSize-1 - indexEntry];
+                            index = (HashIndex*)((uint8_t*)entry + newPolytetsCompressedSize);
                         }
                     }
 #ifndef DISABLE_OVERLAP_CHECKING
@@ -1377,37 +1374,33 @@ void enumerate(
                     {
 #ifdef MULTITHREADING
                         SCOPED_LOCK lock(hashTableMutex[shard]);
-                        size_t indexEntry = *index;
-                        if (indexEntry != 0)
+                        if (*index != 0)
                         {
                             for (;;)
                             {
-                                indexEntry--;
-                                void *entry = (uint8_t*)polytetTable + (size_t)indexEntry * newPolytetsCompressedSize;
+                                void *entry = (uint8_t*)polytetTable + (size_t)(*index - 1) * polytetTableElementSize;
                                 if (memcmp(entry, &runningLeastPolytet[0].value, newPolytetsCompressedSize) == 0)
                                     goto skipDuplicate;
-                                index = &nextHashCollisionTable[polytetTableMaxSize-1 - indexEntry];
-                                indexEntry = *index;
-                                if (indexEntry == 0)
+                                index = (HashIndex*)((uint8_t*)entry + newPolytetsCompressedSize);
+                                if (*index == 0)
                                     break; // no duplicate of runningLeastPolytet[0].value was found in hash table
                             }
                         }
-                        if (newPolytetCount >= polytetTableMaxSize)
-                            quitMemory();
                         size_t newPolytetCountFetched = __atomic_fetch_add(&newPolytetCount, 1, __ATOMIC_RELAXED);
-                        void *entry = (uint8_t*)polytetTable + newPolytetCountFetched * newPolytetsCompressedSize;
+                        void *entry = (uint8_t*)polytetTable + newPolytetCountFetched * polytetTableElementSize;
 #else
-                        void *entry = (uint8_t*)polytetTable + newPolytetCount        * newPolytetsCompressedSize;
+                        void *entry = (uint8_t*)polytetTable + newPolytetCount        * polytetTableElementSize;
 #endif
                         polytetChiralCount += isChiral;
+                        if ((uint8_t*)entry + polytetTableElementSize - (uint8_t*)pool > poolSize)
+                            quitMemory();
                         memcpy(entry, &runningLeastPolytet[0].value, newPolytetsCompressedSize);
 #ifdef MULTITHREADING
-                        //nextHashCollisionTable[polytetTableMaxSize-1 - newPolytetCountFetched] = 0; // unnecessary thanks to the "memset(nextIndexTable, ...)"
-                        *index =               newPolytetCountFetched + 1;
+                        *index = newPolytetCountFetched + 1;
 #else
-                        //nextHashCollisionTable[polytetTableMaxSize-1 - newPolytetCount       ] = 0; // unnecessary thanks to the "memset(nextIndexTable, ...)"
-                        *index =             ++newPolytetCount;
+                        *index = ++newPolytetCount;
 #endif
+                        *(HashIndex*)((uint8_t*)entry + newPolytetsCompressedSize) = 0; // pointer to next hash collision
                     }
 #ifdef PRINT_SYMMETRY_TOTALS
                     polytetSymmetryCount[symmetry - 1][symmetryType]++;
@@ -1518,9 +1511,6 @@ int main(int argc, char *argv[])
     size_t polytetCount = 1;
     size_t memoryUsage = 0;
 
-    struct {void *start, *end;} zeroesNeeded[2];
-    zeroesNeeded[0].start = NULL;
-
     int tetCount=1;
     bool resumedFromFile = false;
 #ifdef MULTITHREADING
@@ -1564,7 +1554,7 @@ int main(int argc, char *argv[])
             poolSize = size;
             if (poolSize < MEMORY_POOL_INITIAL_SIZE)
                 poolSize = MEMORY_POOL_INITIAL_SIZE;
-            pool = calloc(poolSize, 1);
+            pool = malloc(poolSize);
             if (!pool)
             {
                 fclose(resumeFile);
@@ -1587,7 +1577,7 @@ int main(int argc, char *argv[])
     if (!pool)
 #endif
     {
-        pool = calloc(poolSize = MEMORY_POOL_INITIAL_SIZE, 1); // use calloc() so that nextIndexTable[] is zero-initialized
+        pool = malloc(poolSize = MEMORY_POOL_INITIAL_SIZE);
         if (!pool) quitMemory();
     }
 
@@ -1861,12 +1851,10 @@ int main(int argc, char *argv[])
         if (tetCount > MAXIMUM_TETCOUNT)
             break;
 
-        const int basePolytetCompressedSize = ((tetCount - 3) * 3 + 8-1) / 8;
-        const int newPolytetsCompressedSize = ((tetCount - 2) * 3 + 8-1) / 8;
+        int basePolytetCompressedSize = ((tetCount - 3) * 3 + 8-1) / 8;
         size_t hashTableSize = polytetCount * HASH_TABLE_RATIO;
-        size_t polytetTableMaxSize;
         uint8_t *basePolytetTable;
-        HashIndex *hashTable, *nextHashCollisionTable;
+        HashIndex *hashTable;
         void *polytetTable;
         size_t alignmentExcess;
         {
@@ -1875,28 +1863,14 @@ int main(int argc, char *argv[])
             hashTable = (HashIndex*)(basePolytetTable + basePolytetTableSize);
             alignmentExcess = (sizeof(HashIndex) - ((uintptr_t)hashTable % sizeof(HashIndex))) % sizeof(HashIndex);
             (uint8_t*&)hashTable += alignmentExcess;
-            nextHashCollisionTable = hashTable + hashTableSize;
-            size_t minSize = (uint8_t*)nextHashCollisionTable - (uint8_t*)pool;
+            polytetTable = hashTable + hashTableSize;
+            size_t minSize = (uint8_t*)polytetTable - (uint8_t*)pool;
             if (minSize >= poolSize)
                 quitMemory();
         }
+        memset(hashTable, 0, hashTableSize * sizeof(HashIndex));
+        const int newPolytetsCompressedSize = ((tetCount - 2) * 3 + 8-1) / 8;
         const int polytetTableElementSize = newPolytetsCompressedSize + sizeof(HashIndex);
-        polytetTableMaxSize = ((uint8_t*)pool + poolSize - (uint8_t*)nextHashCollisionTable) / polytetTableElementSize;
-        polytetTable = nextHashCollisionTable + polytetTableMaxSize;
-
-        // Initialize nextHashCollisionTable with zeroes here so that it doesn't have to be individually done for each new entry
-        // (which would reduce the efficieny of CPU caching). Also might as well combine the hashTable initialization into this.
-        if (zeroesNeeded[0].start)
-        {
-            for (int i=0; i<_countof(zeroesNeeded); i++)
-            {
-                if (zeroesNeeded[i].start < hashTable)
-                    zeroesNeeded[i].start = hashTable;
-                auto diff = (intptr_t)((uint8_t*)zeroesNeeded[i].end - (uint8_t*)zeroesNeeded[i].start);
-                if (diff > 0)
-                    memset(zeroesNeeded[i].start, 0, diff);
-            }
-        }
         size_t newPolytetCount = 0;
 
         size_t nextWorkAssignment = 0;
@@ -1923,7 +1897,7 @@ int main(int argc, char *argv[])
                 overlapCache,
 #   endif
                 tetCount, pool, poolSize, (const uint8_t *)basePolytetTable, basePolytetCompressedSize, polytetCount,
-                hashTable, hashTableSize, nextHashCollisionTable, polytetTable, newPolytetsCompressedSize, polytetTableMaxSize,
+                hashTable, hashTableSize, polytetTable, newPolytetsCompressedSize, polytetTableElementSize,
                 std::ref(newPolytetCount), std::ref(polytetChiralCount[threadID])
     #ifdef PRINT_SYMMETRY_TOTALS
                 , polytetSymmetryCount[threadID]
@@ -1943,7 +1917,7 @@ int main(int argc, char *argv[])
             overlapCache,
 #   endif
             tetCount, pool, poolSize, (const uint8_t *)basePolytetTable, basePolytetCompressedSize, polytetCount,
-            hashTable, hashTableSize, nextHashCollisionTable, polytetTable, newPolytetsCompressedSize, polytetTableMaxSize,
+            hashTable, hashTableSize, polytetTable, newPolytetsCompressedSize, polytetTableElementSize,
             newPolytetCount, polytetChiralCount
     #ifdef PRINT_SYMMETRY_TOTALS
             , polytetSymmetryCount
@@ -1951,7 +1925,13 @@ int main(int argc, char *argv[])
             );
 #endif
 
-        memoryUsage = (uint8_t*)nextHashCollisionTable + newPolytetCount * polytetTableElementSize - (uint8_t*)pool;
+        memoryUsage = (uint8_t*)polytetTable + newPolytetCount * polytetTableElementSize - (uint8_t*)pool;
+
+        polytetCount = newPolytetCount;
+        for (size_t i=0; i<polytetCount; i++)
+            memcpy(
+                basePolytetTable       + i *                          newPolytetsCompressedSize,
+                (uint8_t*)polytetTable + i * polytetTableElementSize, newPolytetsCompressedSize);
 
 #ifdef SORT_POLYTETS
     #if defined(__GLIBC__) || defined(_WIN32) || defined(_MSC_VER) || defined(__MINGW32__)
@@ -1973,21 +1953,11 @@ int main(int argc, char *argv[])
     #else
         qsort_r
     #endif
-            (polytetTable, newPolytetCount, newPolytetsCompressedSize, sorter, (void*)(size_t)newPolytetsCompressedSize);
+            (basePolytetTable, newPolytetCount, newPolytetsCompressedSize, sorter, (void*)(size_t)newPolytetsCompressedSize);
 #endif
 
-        zeroesNeeded[0].start = basePolytetTable;
-        zeroesNeeded[0].end   = nextHashCollisionTable;
-
-        polytetCount = newPolytetCount;
-        auto polytetByteCount = polytetCount * newPolytetsCompressedSize;
-        memmove(basePolytetTable, polytetTable, polytetByteCount);
-
-        zeroesNeeded[1].start = (HashIndex*)polytetTable - polytetCount;//          polytetTable;
-        zeroesNeeded[1].end   =   (uint8_t*)polytetTable + polytetByteCount;
-
 #ifdef WRITE_TO_FILES
-        writeFile(getCompressedPolytetFilename(tetCount), basePolytetTable, polytetByteCount);
+        writeFile(getCompressedPolytetFilename(tetCount), basePolytetTable, polytetCount * newPolytetsCompressedSize);
 #endif
 
         resumedFromFile = false;
